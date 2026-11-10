@@ -13,7 +13,7 @@ from sqlmodel import Field, SQLModel
 
 
 def now() -> datetime:
-    return datetime.now()
+    return datetime.now().astimezone()
 
 
 class Profile(SQLModel, table=True):

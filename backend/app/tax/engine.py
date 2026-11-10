@@ -13,6 +13,7 @@ slabs, AMT, house-property income other than home-loan interest, clubbing.
 from __future__ import annotations
 
 import copy
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,16 @@ DEFAULT_INPUTS: dict[str, Any] = {
                 "other_cg_slab": 0},
     "profession": {"presumptive_44ada": False, "extra_expenses": 0},
 }
+
+
+def inr(v: float) -> str:
+    """Indian digit grouping: 277000 -> '2,77,000'."""
+    neg, n = v < 0, str(int(round(abs(v))))
+    if len(n) > 3:
+        head, tail = n[:-3], n[-3:]
+        head = ",".join(re.findall(r"\d{1,2}", head[::-1]))[::-1]
+        n = f"{head},{tail}"
+    return ("-" if neg else "") + n
 
 
 def available_fys() -> list[str]:
@@ -122,18 +133,18 @@ def compute(fy: str, bank: dict, inputs: dict) -> dict:
         prof_profit = prof_gross * pres["deemed_profit_pct"] / 100
         prof_src = f"Presumptive: {pres['deemed_profit_pct']}% of gross receipts"
         if prof_gross > pres["receipts_limit"]:
-            notes.append(f"Professional receipts exceed ₹{pres['receipts_limit']:,.0f}; presumptive scheme may not apply.")
+            notes.append(f"Professional receipts exceed ₹{inr(pres['receipts_limit'])}; presumptive scheme may not apply.")
     else:
         expenses = _n(bank.get("business_expense")) + _n(p.get("extra_expenses"))
         prof_profit = prof_gross - expenses
-        prof_src = f"Gross receipts − expenses (₹{expenses:,.0f} tagged business expense + manual)"
+        prof_src = f"Gross receipts − expenses (₹{inr(expenses)} tagged business expense + manual)"
 
     # ---- Trading ---------------------------------------------------------
     tr = inp["trading"]
     intraday = _n(tr.get("intraday_pnl"))
     fno = _n(tr.get("fno_pnl"))
     if intraday < 0:
-        notes.append(f"Intraday (speculative) loss of ₹{-intraday:,.0f} cannot offset other income; ignored here "
+        notes.append(f"Intraday (speculative) loss of ₹{inr(-intraday)} cannot offset other income; ignored here "
                      "(can be carried forward — ask your CA).")
         intraday = 0
     business_income = prof_profit + fno + intraday
@@ -146,8 +157,8 @@ def compute(fy: str, bank: dict, inputs: dict) -> dict:
     gifts_nr = _n(bank.get("gift_nonrelative"))
     gifts_taxable = gifts_nr if gifts_nr > rules["gift_nonrelative_threshold"] else 0
     if gifts_nr and not gifts_taxable:
-        notes.append(f"Gifts from non-relatives total ₹{gifts_nr:,.0f}, within the ₹"
-                     f"{rules['gift_nonrelative_threshold']:,.0f} exemption.")
+        notes.append(f"Gifts from non-relatives total ₹{inr(gifts_nr)}, within the ₹"
+                     f"{inr(rules['gift_nonrelative_threshold'])} exemption.")
     other_sources = int_sav + int_other + dividend + other_inc + gifts_taxable
 
     # ---- Capital gains ---------------------------------------------------
@@ -173,7 +184,7 @@ def compute(fy: str, bank: dict, inputs: dict) -> dict:
         other_cg -= used
         loss -= used
         if loss > 0:
-            notes.append(f"Unabsorbed business loss of ₹{loss:,.0f} (carry-forward — ask your CA).")
+            notes.append(f"Unabsorbed business loss of ₹{inr(loss)} (carry-forward — ask your CA).")
         business_income = 0
 
     regimes = {}
@@ -190,7 +201,7 @@ def compute(fy: str, bank: dict, inputs: dict) -> dict:
                                  - _n(sal.get("professional_tax")) - reg["standard_deduction"]
                                  - _n(sal.get("employer_nps_80ccd2")))
         line("Salary (gross)", salary_gross, salary_src)
-        line("Salary (taxable after standard deduction etc.)", salary_taxable, f"Std. deduction ₹{reg['standard_deduction']:,}")
+        line("Salary (taxable after standard deduction etc.)", salary_taxable, f"Std. deduction ₹{inr(reg['standard_deduction'])}")
 
         house_property = 0.0
         if reg.get("allow_deductions"):
@@ -224,7 +235,7 @@ def compute(fy: str, bank: dict, inputs: dict) -> dict:
                 "Other": _n(d.get("other")),
             }
             deductions = min(sum(parts.values()), gti_normal)  # not against special-rate gains
-            line("Chapter VI-A deductions", -deductions, ", ".join(f"{k} ₹{v:,.0f}" for k, v in parts.items() if v))
+            line("Chapter VI-A deductions", -deductions, ", ".join(f"{k} ₹{inr(v)}" for k, v in parts.items() if v))
 
         normal_income = max(0.0, gti_normal - deductions)
         total_income = normal_income + special_total
@@ -244,7 +255,7 @@ def compute(fy: str, bank: dict, inputs: dict) -> dict:
         if special_total:
             line("Tax on special-rate gains (111A / 112A)", tax_special,
                  f"STCG {rules['special_rates']['stcg_111a_pct']}%, LTCG {rules['special_rates']['ltcg_112a_pct']}% "
-                 f"above ₹{rules['special_rates']['ltcg_112a_exemption']:,}")
+                 f"above ₹{inr(rules['special_rates']['ltcg_112a_exemption'])}")
 
         rebate = 0.0
         if total_income <= reg["rebate_income_limit"]:
@@ -255,7 +266,7 @@ def compute(fy: str, bank: dict, inputs: dict) -> dict:
             if special_total == 0 and tax_normal > excess:
                 rebate = tax_normal - excess
         if rebate:
-            line("Rebate (87A / marginal relief)", -rebate, f"Income up to ₹{reg['rebate_income_limit']:,}")
+            line("Rebate (87A / marginal relief)", -rebate, f"Income up to ₹{inr(reg['rebate_income_limit'])}")
 
         s_rate = _surcharge_rate(total_income, reg["surcharge"])
         surcharge = (tax_normal - rebate) * s_rate / 100 + \
@@ -277,7 +288,7 @@ def compute(fy: str, bank: dict, inputs: dict) -> dict:
     better = min(regimes, key=lambda k: regimes[k]["liability"])
     unconfirmed = _n(bank.get("unconfirmed_credits"))
     if unconfirmed:
-        notes.insert(0, f"₹{unconfirmed:,.0f} of credits are not yet confirmed and are EXCLUDED from this estimate.")
+        notes.insert(0, f"₹{inr(unconfirmed)} of credits are not yet confirmed and are EXCLUDED from this estimate.")
     if not rules.get("verified", False):
         notes.insert(0, f"Tax rules for FY {fy} are not yet verified against official sources.")
 

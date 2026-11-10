@@ -1,0 +1,18 @@
+# Bank data — never commit
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+backend/.venv/
+__pycache__/
+.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/next-env.d.ts
+
+.DS_Store
+.env*

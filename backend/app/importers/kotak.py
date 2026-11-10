@@ -278,31 +278,85 @@ def _read_excel(path: Path, file_type: str) -> list[list[str]]:
     return grid
 
 
-def _read_pdf(path: Path, password: Optional[str]) -> tuple[list[list[str]], str]:
+def _lines(words: list[dict], tol: float = 3.0) -> list[list[dict]]:
+    lines: list[list[dict]] = []
+    for w in sorted(words, key=lambda w: (round(w["top"]), w["x0"])):
+        if lines and abs(lines[-1][0]["top"] - w["top"]) <= tol:
+            lines[-1].append(w)
+        else:
+            lines.append([w])
+    return [sorted(ln, key=lambda w: w["x0"]) for ln in lines]
+
+
+def _group_labels(line: list[dict], gap: float = 7.0) -> list[dict]:
+    """Merge header words into column labels; words closer than `gap` belong together."""
+    labels: list[dict] = []
+    for w in line:
+        if labels and w["x0"] - labels[-1]["x1"] < gap:
+            labels[-1]["text"] += " " + w["text"]
+            labels[-1]["x1"] = w["x1"]
+        else:
+            labels.append({"text": w["text"], "x0": w["x0"], "x1": w["x1"]})
+    return labels
+
+
+def _words_grid(pages_words: list[list[dict]]) -> list[list[str]]:
+    """Borderless PDF tables: place words into columns using header x-positions."""
+    grid: list[list[str]] = []
+    cols: Optional[list[dict]] = None
+    for words in pages_words:
+        for ln in _lines(words):
+            labels = _group_labels(ln)
+            keys = [_match_header(lb["text"]) for lb in labels]
+            if "date" in keys and "description" in keys and "balance" in keys:
+                cols = labels
+                grid.append([lb["text"] for lb in labels])
+                continue
+            if cols is None:
+                grid.append([" ".join(w["text"] for w in ln)])
+                continue
+            cells = [""] * len(cols)
+            for w in ln:
+                overlap = [max(0.0, min(w["x1"], c["x1"]) - max(w["x0"], c["x0"])) for c in cols]
+                if max(overlap) > 0:
+                    j = overlap.index(max(overlap))
+                else:
+                    # No overlap: left-aligned text belongs to the column whose header starts before it.
+                    j = max([k for k in range(len(cols)) if cols[k]["x0"] <= w["x0"]] or [0])
+                cells[j] = f"{cells[j]} {w['text']}".strip()
+            grid.append(cells)
+    return grid
+
+
+def _read_pdf(path: Path, password: Optional[str]) -> tuple[list[list[str]], list[list[str]], str]:
+    """Return (ruled-table grid, word-position grid, full text)."""
     import pdfplumber
     from pdfminer.pdfdocument import PDFPasswordIncorrect
 
     try:
         pdf = pdfplumber.open(path, password=password or "")
+        _ = pdf.pages  # force decryption
     except PDFPasswordIncorrect as e:
         raise PasswordRequired("This PDF is password-protected. Enter the statement password.") from e
     except Exception as e:  # noqa: BLE001
-        if "password" in str(e).lower() or "encrypt" in str(e).lower():
-            raise PasswordRequired("This PDF is password-protected. Enter the statement password.") from e
-        raise StatementError(f"Could not open PDF: {e}") from e
+        # pdfplumber wraps pdfminer errors, e.g. PdfminerException(PDFPasswordIncorrect())
+        if any(isinstance(a, PDFPasswordIncorrect) for a in e.args) or \
+                "password" in repr(e).lower() or "encrypt" in repr(e).lower():
+            msg = "Wrong PDF password." if password else "This PDF is password-protected. Enter the statement password."
+            raise PasswordRequired(msg) from e
+        raise StatementError(f"Could not open PDF: {e!r}") from e
 
     grid: list[list[str]] = []
+    pages_words: list[list[dict]] = []
     texts: list[str] = []
     with pdf:
         for page in pdf.pages:
             texts.append(page.extract_text() or "")
-            tables = page.extract_tables() or []
-            if not tables:
-                tables = page.extract_tables({"vertical_strategy": "text", "horizontal_strategy": "text"}) or []
-            for t in tables:
+            pages_words.append(page.extract_words(keep_blank_chars=False, use_text_flow=False))
+            for t in page.extract_tables() or []:
                 for r in t:
                     grid.append([_clean(c).replace("\n", " ") for c in r])
-    return grid, "\n".join(texts)
+    return grid, _words_grid(pages_words), "\n".join(texts)
 
 
 class KotakParser:
@@ -317,7 +371,11 @@ class KotakParser:
             grid = _read_excel(path, file_type)
             text = "\n".join(" ".join(map(str, r)) for r in grid[:60])
         elif file_type == "pdf":
-            grid, text = _read_pdf(path, password)
+            ruled, positional, text = _read_pdf(path, password)
+            try:
+                return _grid_to_statement(ruled, text)
+            except StatementError:
+                grid = positional
         else:
             raise StatementError(f"Unsupported file type: {file_type}. Use CSV, XLS, XLSX or PDF.")
         return _grid_to_statement(grid, text)
