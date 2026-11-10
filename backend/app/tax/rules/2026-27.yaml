@@ -1,0 +1,65 @@
+# Tax rules for FY 2026-27 (Tax Year 2026-27), Income-tax Act, 2025.
+# UNVERIFIED: values copied from FY 2025-26. Check against Finance Act 2026 and the 2025 Act before relying on them.
+# Amounts in rupees. Rates in percent. Resident individual below 60.
+fy: "2026-27"
+act: "Income-tax Act, 2025"
+label: "FY 2026-27 (Tax Year 2026-27)"
+verified: false
+sources:
+  - "Finance Act 2025 — section 115BAC new-regime slabs; section 87A rebate up to ₹60,000 for income up to ₹12 lakh"
+  - "Finance (No. 2) Act 2024 — section 111A STCG 20%, section 112A LTCG 12.5% above ₹1.25 lakh (from 23 Jul 2024)"
+  - "Section 44ADA — presumptive 50% of gross receipts for specified professions, limit ₹75 lakh when cash receipts ≤5%"
+  - "Section 56(2)(x) — gifts from non-relatives taxable when aggregate exceeds ₹50,000"
+cess_pct: 4
+special_rates:
+  stcg_111a_pct: 20
+  ltcg_112a_pct: 12.5
+  ltcg_112a_exemption: 125000
+  surcharge_cap_pct: 15
+gift_nonrelative_threshold: 50000
+presumptive_44ada:
+  deemed_profit_pct: 50
+  receipts_limit: 7500000
+regimes:
+  new:
+    name: "New regime (section 115BAC)"
+    slabs:  # [upper limit or null, rate%]
+      - [400000, 0]
+      - [800000, 5]
+      - [1200000, 10]
+      - [1600000, 15]
+      - [2000000, 20]
+      - [2400000, 25]
+      - [null, 30]
+    standard_deduction: 75000
+    rebate_income_limit: 1200000
+    rebate_max: 60000
+    marginal_relief: true
+    allow_deductions: false
+    surcharge:  # [income above, rate%]
+      - [5000000, 10]
+      - [10000000, 15]
+      - [20000000, 25]
+  old:
+    name: "Old regime"
+    slabs:
+      - [250000, 0]
+      - [500000, 5]
+      - [1000000, 20]
+      - [null, 30]
+    standard_deduction: 50000
+    rebate_income_limit: 500000
+    rebate_max: 12500
+    marginal_relief: false
+    allow_deductions: true
+    caps:
+      "80C": 150000
+      "80CCD1B": 50000
+      "80D": 100000
+      "80TTA": 10000
+      home_loan_interest: 200000
+    surcharge:
+      - [5000000, 10]
+      - [10000000, 15]
+      - [20000000, 25]
+      - [50000000, 37]
