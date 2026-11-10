@@ -429,8 +429,10 @@ def put_setting(key: str, body: dict, s: Session = Depends(get_session)):
         raise HTTPException(404, "Unknown setting")
     before = dict(st.value)
     if key == "ollama":
-        url = str(body.get("url", st.value.get("url", "")))
-        if not url.startswith(("http://127.0.0.1", "http://localhost")):
+        from urllib.parse import urlparse
+
+        u = urlparse(str(body.get("url", st.value.get("url", ""))))
+        if u.scheme != "http" or u.hostname not in ("127.0.0.1", "localhost") or u.username or u.password:
             raise HTTPException(400, "Ollama URL must be on this machine (127.0.0.1 or localhost).")
     st.value = {**st.value, **body}
     s.add(st)

