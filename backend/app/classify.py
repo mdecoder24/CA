@@ -21,7 +21,10 @@ _CP_PATTERNS = [
     re.compile(r"(?i)^sentimps\d{6,}([^/]+)/"),                             # SentIMPS<ref><name>/<ifsc>/
     re.compile(r"(?i)^mb:\s*811\s*sent\s+(?:ft|neft|imps)\s+([a-z .]+?)\s+\d"),  # MB:811SENT FT <NAME> <acct>
     re.compile(r"(?i)^(?:neft|rtgs)\s+[a-z]{4}[a-z0-9]*\d{6,}\s+(.+)$"),    # NEFT <UTR> <NAME ...>
-    re.compile(r"(?i)^upim?/([^/]+)/"),                                     # UPI/<name>/<ref>/<note>
+    re.compile(r"(?i)upi/(?:dr|cr)/\d+/([^/]+)/"),                          # SBI: TO TRANSFER-UPI/DR/<ref>/<name>/
+    re.compile(r"(?i)^upi/\d{6,}/[^/]*/([^/]+)/"),                          # ICICI: UPI/<ref>/<note>/<name>/
+    re.compile(r"(?i)^upi-([^-]+)-"),                                       # HDFC: UPI-<name>-<vpa>-<ifsc>-<ref>
+    re.compile(r"(?i)^upim?/([^/]+)/"),                                     # Kotak: UPI/<name>/<ref>/<note>
     re.compile(r"(?i)^(?:imps|neft|rtgs|ib|mb)[\s/\-:]+(?:(?:cr|dr|p2a|p2m|in|out)[\s/\-:]+)?([^/\-:]+)"),
     re.compile(r"(?i)^cash\s+deposit\s+by\s+([a-z .]+?)\s+at\b"),           # Cash Deposit by <name> at <place>
     re.compile(r"(?i)^pg\s+(?:os)?([a-z][a-z .]+?)(?:\s+pri(?:vate)?.*)?$"),    # PG <merchant> (payment gateway)
@@ -74,7 +77,7 @@ def apply_rules(s: Session, txs: Iterable[RawTransaction], profile_id: int, only
         c = s.exec(select(Classification).where(Classification.raw_transaction_id == tx.id)).first()
         if c is None:
             c = Classification(raw_transaction_id=tx.id, counterparty=extract_counterparty(tx.raw_description))
-        if only_unconfirmed and c.status == "confirmed":
+        if only_unconfirmed and (c.status == "confirmed" or c.source == "match"):
             continue
         if c.status != "confirmed":
             # Counterparty is derived data; refresh it when the extractor improves.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,12 +15,12 @@ from .anomalies import run_flags
 from .classify import apply_rules
 from .db import data_dir
 from .importers.base import ParsedStatement
-from .importers.kotak import KotakParser
 from .importers.reconcile import reconcile
 from .models import Account, ImportBatch, RawTransaction
+from .transfers import match_own_transfers
 from .util import audit
 
-PARSERS = {"kotak": KotakParser()}
+from .banks import bank_name, get_parser
 ALLOWED = {"csv", "xls", "xlsx", "pdf"}
 
 
@@ -46,7 +47,7 @@ def recheck_batch(s: Session, batch_id: int, password: Optional[str] = None) -> 
     if batch is None:
         raise ImportRejected("Unknown import.")
     account = s.get(Account, batch.account_id)
-    st = PARSERS[account.bank].parse(Path(batch.stored_path), batch.file_type, password=password)
+    st = get_parser(account.bank).parse(Path(batch.stored_path), batch.file_type, password=password)
     rec = reconcile(st)
     before = {"status": batch.status, "reconcile_detail": batch.reconcile_detail,
               "closing_balance": batch.closing_balance, "override_reason": batch.override_reason}
@@ -75,7 +76,8 @@ class ImportOutcome:
 
 
 def import_statement(s: Session, account_id: int, filename: str, tmp_path: Path,
-                     password: Optional[str] = None, override_reason: str = "") -> ImportOutcome:
+                     password: Optional[str] = None, override_reason: str = "",
+                     force_account: bool = False) -> ImportOutcome:
     ext = Path(filename).suffix.lower().lstrip(".")
     if ext not in ALLOWED:
         raise ImportRejected(f"Unsupported file type .{ext}. Use CSV, XLS, XLSX or PDF.")
@@ -89,10 +91,18 @@ def import_statement(s: Session, account_id: int, filename: str, tmp_path: Path,
         raise ImportRejected(f"This exact file was already imported on {prior.created_at:%d %b %Y} "
                              f"as “{prior.filename}”.", code="duplicate_file")
 
-    parser = PARSERS[account.bank]
+    parser = get_parser(account.bank)
     # Password is used in memory only and never stored or logged.
     st: ParsedStatement = parser.parse(tmp_path, ext, password=password)
     rec = reconcile(st)
+
+    # Guard against uploading one bank's statement into another account.
+    stmt4 = re.sub(r"\D", "", st.masked_account)[-4:]
+    acct4 = re.sub(r"\D", "", account.masked_number or "")[-4:]
+    if stmt4 and acct4 and stmt4 != acct4 and not force_account:
+        raise ImportRejected(
+            f"This statement is for account ending {stmt4}, but you chose {bank_name(account.bank)} ending {acct4}. "
+            "Pick the right account, or add this one under Accounts.", code="account_mismatch")
 
     if rec.status == "failed" and not override_reason.strip():
         raise ImportRejected(rec.detail, code="reconcile_failed",
@@ -149,6 +159,7 @@ def import_statement(s: Session, account_id: int, filename: str, tmp_path: Path,
     s.commit()
 
     apply_rules(s, new_txs, account.profile_id)
+    match_own_transfers(s, account.profile_id)
     run_flags(s)
     s.refresh(batch)
     return ImportOutcome(batch=batch, inserted=len(new_txs), duplicates=dupes)

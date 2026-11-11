@@ -19,10 +19,12 @@ from sqlmodel import Session, func, select
 
 from . import reports
 from .anomalies import run_flags
+from .banks import BANKS, bank_name
 from .classify import apply_rules, extract_counterparty, llm_suggest, set_classification
 from .db import data_dir, get_session, init_db
 from .importers.base import PasswordRequired, StatementError
 from .ingest import ImportRejected, import_statement, recheck_batch
+from .transfers import match_own_transfers
 from .models import (Account, AuditLog, Category, Classification, Flag, ImportBatch, Person, RawTransaction, Rule,
                      Setting, TaxInput)
 from .people import compile_pattern, ledger as person_ledger, load_people, person_for, \
@@ -74,19 +76,113 @@ def meta(s: Session = Depends(get_session)):
 
 
 @app.get("/api/dashboard")
-def get_dashboard(fy: str, s: Session = Depends(get_session)):
-    return dashboard(s, fy)
+def get_dashboard(fy: str, account_id: Optional[int] = None, s: Session = Depends(get_session)):
+    return dashboard(s, fy, account_id)
+
+
+# ---------------------------------------------------------------- accounts
+@app.get("/api/banks")
+def list_banks():
+    return [{"code": k, "name": v} for k, v in BANKS.items()]
+
+
+def _account_out(s: Session, a: Account) -> dict:
+    n = s.exec(select(func.count(RawTransaction.id)).where(RawTransaction.account_id == a.id)).one()
+    last = s.exec(select(RawTransaction).where(RawTransaction.account_id == a.id, RawTransaction.balance.is_not(None))
+                  .order_by(RawTransaction.txn_date.desc(), RawTransaction.import_batch_id.desc(),
+                            RawTransaction.row_index.desc())).first()
+    imports = s.exec(select(func.count(ImportBatch.id)).where(ImportBatch.account_id == a.id)).one()
+    return {"id": a.id, "bank": a.bank, "bank_name": bank_name(a.bank), "nickname": a.nickname,
+            "masked_number": a.masked_number, "txn_count": n, "imports": imports,
+            "last_date": last.txn_date.isoformat() if last else None, "balance": last.balance if last else None}
+
+
+@app.get("/api/accounts")
+def list_accounts(s: Session = Depends(get_session)):
+    return [_account_out(s, a) for a in s.exec(select(Account).order_by(Account.id))]
+
+
+class AccountIn(BaseModel):
+    bank: str
+    nickname: str = ""
+    last4: str = ""
+
+
+def _clean_account(body: AccountIn) -> tuple[str, str, str]:
+    import re as _re
+
+    if body.bank not in BANKS:
+        raise HTTPException(400, "Choose a bank from the list")
+    digits = _re.sub(r"\D", "", body.last4)
+    if body.last4 and len(digits) != 4:
+        raise HTTPException(400, "Enter the last 4 digits of the account number")
+    nickname = body.nickname.strip()[:60] or bank_name(body.bank)
+    return body.bank, nickname, f"XXXX{digits}" if digits else ""
+
+
+@app.post("/api/accounts")
+def create_account(body: AccountIn, s: Session = Depends(get_session)):
+    bank, nickname, masked = _clean_account(body)
+    a = Account(profile_id=1, bank=bank, nickname=nickname, masked_number=masked)
+    s.add(a)
+    s.flush()
+    audit(s, "account", a.id, "create", after=a)
+    s.commit()
+    s.refresh(a)
+    return _account_out(s, a)
+
+
+@app.put("/api/accounts/{account_id}")
+def update_account(account_id: int, body: AccountIn, s: Session = Depends(get_session)):
+    a = s.get(Account, account_id)
+    if a is None:
+        raise HTTPException(404, "Account not found")
+    bank, nickname, masked = _clean_account(body)
+    before = a.model_dump()
+    a.bank, a.nickname = bank, nickname
+    if masked:
+        a.masked_number = masked
+    s.add(a)
+    audit(s, "account", a.id, "update", before=before, after=a)
+    s.commit()
+    s.refresh(a)
+    return _account_out(s, a)
+
+
+@app.delete("/api/accounts/{account_id}")
+def delete_account(account_id: int, s: Session = Depends(get_session)):
+    """Only an account with no imported statements can be removed (no bank data is ever deleted here)."""
+    a = s.get(Account, account_id)
+    if a is None:
+        raise HTTPException(404, "Account not found")
+    if s.exec(select(ImportBatch).where(ImportBatch.account_id == account_id)).first():
+        raise HTTPException(409, "This account has imported statements, so it can't be removed.")
+    audit(s, "account", a.id, "delete", before=a)
+    s.delete(a)
+    s.commit()
+    return {"ok": True}
+
+
+@app.post("/api/accounts/match-transfers")
+def rematch_transfers(s: Session = Depends(get_session)):
+    n = match_own_transfers(s)
+    run_flags(s)
+    return {"matched": n}
 
 
 # ---------------------------------------------------------------- imports
 @app.get("/api/imports")
-def list_imports(s: Session = Depends(get_session)):
-    return s.exec(select(ImportBatch).order_by(ImportBatch.created_at.desc())).all()
+def list_imports(account_id: Optional[int] = None, s: Session = Depends(get_session)):
+    q = select(ImportBatch).order_by(ImportBatch.created_at.desc())
+    if account_id:
+        q = q.where(ImportBatch.account_id == account_id)
+    return s.exec(q).all()
 
 
 @app.post("/api/imports")
 async def upload(file: UploadFile = File(...), account_id: int = Form(1), password: str = Form(""),
-                 override_reason: str = Form(""), s: Session = Depends(get_session)):
+                 override_reason: str = Form(""), force_account: bool = Form(False),
+                 s: Session = Depends(get_session)):
     suffix = Path(file.filename or "statement").suffix.lower()
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td) / f"upload{suffix}"
@@ -99,7 +195,8 @@ async def upload(file: UploadFile = File(...), account_id: int = Form(1), passwo
                 out.write(chunk)
         try:
             res = import_statement(s, account_id, file.filename or f"statement{suffix}", tmp,
-                                   password=password or None, override_reason=override_reason)
+                                   password=password or None, override_reason=override_reason,
+                                   force_account=force_account)
         except PasswordRequired as e:
             raise HTTPException(422, {"code": "password_required", "message": str(e)})
         except ImportRejected as e:
@@ -137,6 +234,10 @@ def _tx_out(tx: RawTransaction, c: Optional[Classification], cat: Optional[Categ
     }
 
 
+def _account_labels(s: Session) -> dict[int, str]:
+    return {a.id: a.nickname or bank_name(a.bank) for a in s.exec(select(Account))}
+
+
 def _flags_by_tx(s: Session) -> dict[int, list[Flag]]:
     out: dict[int, list[Flag]] = {}
     for f in s.exec(select(Flag)):
@@ -147,11 +248,13 @@ def _flags_by_tx(s: Session) -> dict[int, list[Flag]]:
 @app.get("/api/transactions")
 def list_transactions(fy: str, direction: Optional[str] = None, status: Optional[str] = None,
                       category_id: Optional[int] = None, q: Optional[str] = None, month: Optional[str] = None,
-                      flagged: bool = False, person_id: Optional[int] = None, s: Session = Depends(get_session)):
+                      flagged: bool = False, person_id: Optional[int] = None, account_id: Optional[int] = None,
+                      s: Session = Depends(get_session)):
     flags = _flags_by_tx(s)
     people = load_people(s)
+    accounts = _account_labels(s)
     out = []
-    for tx, c, cat in fy_rows(s, fy):
+    for tx, c, cat in fy_rows(s, fy, account_id):
         who = person_for(tx.raw_description, people)
         if person_id is not None and (who is None or who.id != person_id):
             continue
@@ -175,16 +278,19 @@ def list_transactions(fy: str, direction: Optional[str] = None, status: Optional
             if ql not in tx.raw_description.lower() and ql not in (c.note.lower() if c else "") \
                     and ql not in tx.ref_no.lower():
                 continue
-        out.append(_tx_out(tx, c, cat, flags.get(tx.id, []), who))
+        out.append({**_tx_out(tx, c, cat, flags.get(tx.id, []), who), "account_id": tx.account_id,
+                    "account": accounts.get(tx.account_id, "")})
     return out
 
 
 @app.get("/api/review")
-def review_queue(fy: str, direction: str = "credit", s: Session = Depends(get_session)):
+def review_queue(fy: str, direction: str = "credit", account_id: Optional[int] = None,
+                 s: Session = Depends(get_session)):
     flags = _flags_by_tx(s)
     people = load_people(s)
+    accounts = _account_labels(s)
     items = []
-    for tx, c, cat in fy_rows(s, fy):
+    for tx, c, cat in fy_rows(s, fy, account_id):
         d = "credit" if tx.credit else "debit"
         if d != direction:
             continue
@@ -192,7 +298,8 @@ def review_queue(fy: str, direction: str = "credit", s: Session = Depends(get_se
         unexplained = cat is not None and cat.treatment == "unexplained"
         if (c and c.status == "confirmed") and not open_flags and not unexplained:
             continue
-        items.append(_tx_out(tx, c, cat, flags.get(tx.id, []), person_for(tx.raw_description, people)))
+        items.append({**_tx_out(tx, c, cat, flags.get(tx.id, []), person_for(tx.raw_description, people)),
+                      "account_id": tx.account_id, "account": accounts.get(tx.account_id, "")})
     items.sort(key=lambda x: (0 if any(not f["resolved"] for f in x["flags"]) else 1,
                               0 if x["status"] == "suggested" else 1, -(x["credit"] or x["debit"])))
     return items
@@ -418,15 +525,15 @@ def _check_person(body: PersonIn) -> None:
 
 
 @app.get("/api/people")
-def list_people(fy: str, s: Session = Depends(get_session)):
+def list_people(fy: str, account_id: Optional[int] = None, s: Session = Depends(get_session)):
     start, end = _fy_or_400(fy)
-    return people_summaries(s, start, end)
+    return people_summaries(s, start, end, account_id)
 
 
 @app.get("/api/people-suggestions")
-def suggest_people(fy: str, s: Session = Depends(get_session)):
+def suggest_people(fy: str, account_id: Optional[int] = None, s: Session = Depends(get_session)):
     start, end = _fy_or_400(fy)
-    return people_suggestions(s, start, end)
+    return people_suggestions(s, start, end, account_id=account_id)
 
 
 @app.post("/api/people")
@@ -470,24 +577,24 @@ def delete_person(person_id: int, s: Session = Depends(get_session)):
 
 
 @app.get("/api/people/{person_id}/ledger")
-def get_person_ledger(person_id: int, fy: str, s: Session = Depends(get_session)):
+def get_person_ledger(person_id: int, fy: str, account_id: Optional[int] = None, s: Session = Depends(get_session)):
     p = s.get(Person, person_id)
     if p is None:
         raise HTTPException(404, "Person not found")
     start, end = _fy_or_400(fy)
-    return person_ledger(s, p, start, end)
+    return person_ledger(s, p, start, end, account_id)
 
 
 # ---------------------------------------------------------------- spend
 @app.get("/api/spend")
 def spend(fy: Optional[str] = None, start: Optional[date] = None, end: Optional[date] = None,
-          batch_id: Optional[int] = None, s: Session = Depends(get_session)):
+          batch_id: Optional[int] = None, account_id: Optional[int] = None, s: Session = Depends(get_session)):
     """Spend analytics for an FY, an explicit date range, or one imported statement's period."""
     if batch_id is not None:
         b = s.get(ImportBatch, batch_id)
         if b is None or b.period_from is None:
             raise HTTPException(404, "Import not found")
-        start, end = b.period_from, b.period_to
+        start, end, account_id = b.period_from, b.period_to, b.account_id
     elif fy:
         try:
             start, end = fy_range(fy)
@@ -495,7 +602,7 @@ def spend(fy: Optional[str] = None, start: Optional[date] = None, end: Optional[
             raise HTTPException(400, "fy must look like 2026-27")
     if start is None or end is None or start > end:
         raise HTTPException(400, "Give fy, batch_id, or start and end dates")
-    return spend_analyse(s, start, end)
+    return spend_analyse(s, start, end, account_id)
 
 
 # ---------------------------------------------------------------- tax

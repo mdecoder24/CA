@@ -30,12 +30,12 @@ HEADER_KEYS = {
     "date": [r"^(txn|transaction|tran)?\.?\s*date$", r"^date$", r"posting\s*date", r"^txn\s*dt"],
     "value_date": [r"value\s*date", r"^value\s*dt"],
     "description": [r"description", r"narration", r"particulars", r"remarks", r"details"],
-    "ref": [r"chq", r"cheque", r"ref", r"instrument"],
+    "ref": [r"chq", r"cheque", r"ref", r"instrument", r"utr"],
     "debit": [r"withdrawal", r"^debit", r"\bdr\.?\s*amount", r"debit\s*amount", r"^dr$"],
     "credit": [r"deposit", r"^credit", r"\bcr\.?\s*amount", r"credit\s*amount", r"^cr$"],
     "amount": [r"^amount", r"transaction\s*amount"],
     "drcr": [r"^dr\s*/\s*cr$", r"^cr\s*/\s*dr$", r"^type$", r"debit\s*/\s*credit", r"^dr/cr$"],
-    "balance": [r"balance"],
+    "balance": [r"balance", r"^bal\.?$"],
 }
 
 AMOUNT_RE = re.compile(r"-?\(?[\d,]+(?:\.\d{1,2})?\)?")

@@ -52,14 +52,31 @@ def tax_estimate(s: Session, fy: str, profile_id: int = 1) -> dict:
     return engine.compute(fy, bank_aggregates(s, fy), ti.data if ti else {})
 
 
-def coverage_gaps(s: Session, fy: str) -> list[dict]:
-    """Date ranges inside the FY (up to today) not covered by any successful import."""
+def coverage_gaps(s: Session, fy: str, account_id: Optional[int] = None) -> list[dict]:
+    """Per account: date ranges inside the FY (up to yesterday) not covered by any import."""
+    from .banks import bank_name
+    from .models import Account
+
+    accounts = s.exec(select(Account)).all()
+    if account_id:
+        accounts = [a for a in accounts if a.id == account_id]
+    out = []
+    for a in accounts:
+        if not s.exec(select(ImportBatch).where(ImportBatch.account_id == a.id)).first():
+            continue
+        for g in _gaps_for(s, fy, a.id):
+            out.append({**g, "account_id": a.id, "account": a.nickname or bank_name(a.bank)})
+    return out
+
+
+def _gaps_for(s: Session, fy: str, account_id: int) -> list[dict]:
     start, end = fy_range(fy)
     # A statement downloaded today normally ends yesterday, so today is not a gap.
     end = min(end, date.fromordinal(date.today().toordinal() - 1))
     if end < start:
         return []
-    batches = s.exec(select(ImportBatch).where(ImportBatch.period_from.is_not(None))).all()
+    batches = s.exec(select(ImportBatch).where(ImportBatch.period_from.is_not(None),
+                                               ImportBatch.account_id == account_id)).all()
     spans = sorted((b.period_from, b.period_to) for b in batches if b.period_to >= start and b.period_from <= end)
     gaps, cursor = [], start
     for a, b in spans:
@@ -72,8 +89,8 @@ def coverage_gaps(s: Session, fy: str) -> list[dict]:
     return gaps
 
 
-def dashboard(s: Session, fy: str) -> dict:
-    rows = fy_rows(s, fy)
+def dashboard(s: Session, fy: str, account_id: Optional[int] = None) -> dict:
+    rows = fy_rows(s, fy, account_id)
     credits = sum(tx.credit for tx, _, _ in rows)
     debits = sum(tx.debit for tx, _, _ in rows)
     unclassified_credits = [tx for tx, c, _ in rows if tx.credit and (c is None or c.status != "confirmed")]
@@ -101,7 +118,12 @@ def dashboard(s: Session, fy: str) -> dict:
 
     tx_ids = {tx.id for tx, _, _ in rows}
     open_flags = [f for f in s.exec(select(Flag).where(Flag.resolved == False)) if f.raw_transaction_id in tx_ids]  # noqa: E712
-    last_balance = next((tx.balance for tx, _, _ in reversed(rows) if tx.balance is not None), None)
+    # Closing balance = sum of each account's latest balance.
+    last_by_acct: dict[int, int] = {}
+    for tx, _, _ in rows:
+        if tx.balance is not None:
+            last_by_acct[tx.account_id] = tx.balance
+    last_balance = sum(last_by_acct.values()) if last_by_acct else None
     return {
         "fy": fy,
         "total_credits": credits, "total_debits": debits, "closing_balance": last_balance,
@@ -113,5 +135,5 @@ def dashboard(s: Session, fy: str) -> dict:
         "monthly": list(months.values()),
         "income_heads": [{"head": k, "amount": v} for k, v in sorted(heads.items(), key=lambda x: -x[1])],
         "credit_categories": [{"category": k, "amount": v} for k, v in sorted(by_cat.items(), key=lambda x: -x[1])],
-        "gaps": coverage_gaps(s, fy),
+        "gaps": coverage_gaps(s, fy, account_id),
     }

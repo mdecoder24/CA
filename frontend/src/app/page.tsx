@@ -15,8 +15,9 @@ const compact = (p: number) => {
 };
 
 export default function DashboardPage() {
-  const { fy } = useApp();
-  const { data: d, error } = useData(() => api.get<Dashboard>("/api/dashboard", { fy }), [fy]);
+  const { fy, accountId, accounts } = useApp();
+  const { data: d, error } = useData(() => api.get<Dashboard>("/api/dashboard", { fy, account_id: accountId }), [fy, accountId]);
+  const acct = accounts.find((a) => String(a.id) === accountId);
 
   if (error) return <Empty title="Could not load dashboard">{error}</Empty>;
   if (!d) return null;
@@ -24,7 +25,7 @@ export default function DashboardPage() {
   if (d.txn_count === 0)
     return (
       <>
-        <PageHeader title="Dashboard" sub={`FY ${fy}`} />
+        <PageHeader title="Dashboard" sub={`FY ${fy} · ${acct ? acct.nickname : "All accounts"}`} />
         <Empty title="No transactions for this year yet">
           <Link href="/imports" className="btn btn-primary mt-4">
             Import a Kotak statement
@@ -39,7 +40,7 @@ export default function DashboardPage() {
     <>
       <PageHeader
         title="Dashboard"
-        sub={`FY ${fy} · ${d.txn_count} transactions`}
+        sub={`FY ${fy} · ${acct ? acct.nickname : "All accounts"} · ${d.txn_count} transactions`}
         actions={
           <Link href="/review" className="btn btn-primary">
             Review {d.unclassified_credits + d.open_flags > 0 ? `(${d.unclassified_credits})` : ""}
@@ -53,6 +54,7 @@ export default function DashboardPage() {
           {d.gaps.map((g, i) => (
             <span key={i}>
               {i > 0 && ", "}
+              {g.account ? `${g.account}: ` : ""}
               {fmtDate(g.from)} to {fmtDate(g.to)}
             </span>
           ))}

@@ -14,9 +14,9 @@ const FLAG_LABEL: Record<string, string> = {
 };
 
 export default function ReviewPage() {
-  const { fy, toast, bump } = useApp();
+  const { fy, toast, bump, accountId } = useApp();
   const [direction, setDirection] = useState<"credit" | "debit">("credit");
-  const { data: items, reload } = useData(() => api.get<Txn[]>("/api/review", { fy, direction }), [fy, direction]);
+  const { data: items, reload } = useData(() => api.get<Txn[]>("/api/review", { fy, direction, account_id: accountId }), [fy, direction, accountId]);
   const { data: cats } = useData(() => api.get<Category[]>("/api/categories"), []);
   const [active, setActive] = useState(0);
   const [aiBusy, setAiBusy] = useState(false);

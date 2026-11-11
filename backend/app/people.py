@@ -47,19 +47,22 @@ def person_for(text: str, people: list[tuple[Person, re.Pattern]]) -> Optional[P
     return None
 
 
-def _rows(s: Session, start: date, end: date):
-    return s.exec(
+def _rows(s: Session, start: date, end: date, account_id: Optional[int] = None):
+    q = (
         select(RawTransaction, Classification, Category)
         .join(Classification, Classification.raw_transaction_id == RawTransaction.id, isouter=True)
         .join(Category, Category.id == Classification.category_id, isouter=True)
         .where(RawTransaction.txn_date >= start, RawTransaction.txn_date <= end)
-        .order_by(RawTransaction.txn_date, RawTransaction.import_batch_id, RawTransaction.row_index)).all()
+        .order_by(RawTransaction.txn_date, RawTransaction.import_batch_id, RawTransaction.row_index))
+    if account_id:
+        q = q.where(RawTransaction.account_id == account_id)
+    return s.exec(q).all()
 
 
-def summaries(s: Session, start: date, end: date) -> list[dict]:
+def summaries(s: Session, start: date, end: date, account_id: Optional[int] = None) -> list[dict]:
     people = load_people(s)
     tot: dict[int, dict] = {p.id: {"received": 0, "sent": 0, "count": 0, "last": None} for p, _ in people}
-    for tx, _, _ in _rows(s, start, end):
+    for tx, _, _ in _rows(s, start, end, account_id):
         p = person_for(tx.raw_description, people)
         if p is None:
             continue
@@ -72,14 +75,14 @@ def summaries(s: Session, start: date, end: date) -> list[dict]:
              **tot[p.id], "net": tot[p.id]["received"] - tot[p.id]["sent"]} for p, _ in people]
 
 
-def ledger(s: Session, person: Person, start: date, end: date) -> dict:
+def ledger(s: Session, person: Person, start: date, end: date, account_id: Optional[int] = None) -> dict:
     people = load_people(s)
     rows = []
     running = 0
     monthly: dict[str, dict] = defaultdict(lambda: {"received": 0, "sent": 0})
     by_cat: dict[str, dict] = defaultdict(lambda: {"received": 0, "sent": 0, "count": 0})
     names: dict[str, int] = defaultdict(int)
-    for tx, c, cat in _rows(s, start, end):
+    for tx, c, cat in _rows(s, start, end, account_id):
         who = person_for(tx.raw_description, people)
         if who is None or who.id != person.id:
             continue
@@ -122,13 +125,13 @@ def ledger(s: Session, person: Person, start: date, end: date) -> dict:
     }
 
 
-def suggestions(s: Session, start: date, end: date, limit: int = 8) -> list[dict]:
+def suggestions(s: Session, start: date, end: date, limit: int = 8, account_id: Optional[int] = None) -> list[dict]:
     """People not yet tracked whom money went both to and from, largest first."""
     from .spend import person_key
 
     people = load_people(s)
     groups: dict[str, dict] = defaultdict(lambda: {"received": 0, "sent": 0, "count": 0, "names": defaultdict(int)})
-    for tx, c, cat in _rows(s, start, end):
+    for tx, c, cat in _rows(s, start, end, account_id):
         if person_for(tx.raw_description, people) is not None:
             continue
         if cat is not None and cat.treatment in ("not_income", "trading_capital", "salary"):

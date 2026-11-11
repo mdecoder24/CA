@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { api, type PersonSummary } from "@/lib/api";
+import { type Account, api, type PersonSummary } from "@/lib/api";
 
 type Toast = { id: number; text: string; tone: "ok" | "error" };
 type Ctx = {
@@ -14,6 +14,10 @@ type Ctx = {
   version: number;
   bump: () => void;
   backendDown: boolean;
+  /** "" = all accounts */
+  accountId: string;
+  setAccountId: (id: string) => void;
+  accounts: Account[];
 };
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -44,15 +48,41 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [version, setVersion] = useState(0);
   const [backendDown, setBackendDown] = useState(false);
   const [people, setPeople] = useState<PersonSummary[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accountIdState, setAccountIdState] = useState("");
   const nextId = useRef(1);
+
+  // An account id that no longer exists falls back to "all accounts".
+  const accountId = accounts.some((a) => String(a.id) === accountIdState) ? accountIdState : "";
+
+  useEffect(() => {
+    api
+      .get<Account[]>("/api/accounts")
+      .then((a) => {
+        setAccounts(a);
+        let saved = "";
+        try {
+          saved = localStorage.getItem("fintrack.account") ?? "";
+        } catch {}
+        setAccountIdState((cur) => cur || saved);
+      })
+      .catch(() => setAccounts([]));
+  }, [version]);
+
+  const setAccountId = (v: string) => {
+    setAccountIdState(v);
+    try {
+      localStorage.setItem("fintrack.account", v);
+    } catch {}
+  };
 
   useEffect(() => {
     if (!fy) return;
     api
-      .get<PersonSummary[]>("/api/people", { fy })
+      .get<PersonSummary[]>("/api/people", { fy, account_id: accountId })
       .then((p) => setPeople(p.filter((x) => x.pinned)))
       .catch(() => setPeople([]));
-  }, [fy, version]);
+  }, [fy, version, accountId]);
 
   const bump = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -85,10 +115,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AppCtx.Provider value={{ fy, fys, setFy, toast, version, bump, backendDown }}>
+    <AppCtx.Provider value={{ fy, fys, setFy, toast, version, bump, backendDown, accountId, setAccountId, accounts }}>
       <div className="flex min-h-dvh flex-col md:flex-row">
         <aside className="border-line bg-surface md:sticky md:top-0 md:h-dvh md:w-56 md:shrink-0 md:border-r border-b md:border-b-0">
-          <div className="flex items-center justify-between gap-3 px-4 py-3 md:block md:px-5 md:py-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:block md:px-5 md:py-5">
             <div>
               <div className="text-[15px] font-semibold tracking-tight">FinTrack</div>
               <div className="text-ink-3 text-[11.5px]">Personal finance · India</div>
@@ -104,6 +134,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 {fys.map((y) => (
                   <option key={y} value={y}>
                     FY {y}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="md:mt-3 md:block">
+              <span className="label hidden md:mb-1 md:block">Bank account</span>
+              <select
+                className="select w-44 md:w-full"
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                aria-label="Bank account"
+              >
+                <option value="">All accounts{accounts.length > 1 ? ` (${accounts.length})` : ""}</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nickname}
+                    {a.masked_number ? ` · ${a.masked_number.slice(-4)}` : ""}
                   </option>
                 ))}
               </select>

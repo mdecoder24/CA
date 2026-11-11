@@ -190,12 +190,15 @@ def analyse(s: Session, start: date, end: date, account_id: Optional[int] = None
                         "payee": cp, "narration": tx.raw_description})
 
     # Balance behaviour: last balance of each day.
+    # End-of-day balance summed across accounts (each carries its last known balance).
     day_bal: dict[date, int] = {}
+    last_by_acct: dict[int, int] = {}
     for tx, _, _ in rows:
         if tx.balance is not None:
-            day_bal[tx.txn_date] = tx.balance
+            last_by_acct[tx.account_id] = tx.balance
+            day_bal[tx.txn_date] = sum(last_by_acct.values())
     low_days = sorted(d for d, b in day_bal.items() if b < cfg["low_balance_paise"])
-    closing = next((tx.balance for tx, _, _ in reversed(rows) if tx.balance is not None), None)
+    closing = sum(last_by_acct.values()) if last_by_acct else None
     min_bal = min(day_bal.values()) if day_bal else None
 
     monthly_spend = spend_total / months

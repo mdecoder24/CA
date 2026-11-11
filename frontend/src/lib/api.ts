@@ -69,6 +69,8 @@ export const api = {
 export type Flag = { id: number; type: string; detail: string; resolved: boolean; resolution_note: string };
 export type Txn = {
   id: number;
+  account_id: number;
+  account: string;
   person_id: number | null;
   person: string | null;
   txn_date: string;
@@ -134,7 +136,7 @@ export type Dashboard = {
   monthly: { month: string; credits: number; debits: number }[];
   income_heads: { head: string; amount: number }[];
   credit_categories: { category: string; amount: number }[];
-  gaps: { from: string; to: string }[];
+  gaps: { from: string; to: string; account_id?: number; account?: string }[];
 };
 export type TaxLine = { label: string; amount: number; source: string; kind: "row" | "total" | "grand" };
 export type TaxEstimate = {
@@ -225,4 +227,17 @@ export type Ledger = {
   names_seen: string[];
   unconfirmed: number;
   rows: LedgerRow[];
+};
+
+export type Bank = { code: string; name: string };
+export type Account = {
+  id: number;
+  bank: string;
+  bank_name: string;
+  nickname: string;
+  masked_number: string;
+  txn_count: number;
+  imports: number;
+  last_date: string | null;
+  balance: number | null;
 };

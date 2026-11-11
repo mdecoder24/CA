@@ -6,8 +6,8 @@ import { api, fmtDate, paise } from "@/lib/api";
 import { useData } from "@/lib/use-data";
 
 export default function SpendPage() {
-  const { fy } = useApp();
-  const { data: d, error } = useData(() => api.get<Spend>("/api/spend", { fy }), [fy]);
+  const { fy, accountId } = useApp();
+  const { data: d, error } = useData(() => api.get<Spend>("/api/spend", { fy, account_id: accountId }), [fy, accountId]);
 
   if (error) return <Empty title="Could not load spend analysis">{error}</Empty>;
   if (!d) return null;

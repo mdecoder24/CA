@@ -18,7 +18,7 @@ const STATUS_DOT: Record<string, { cls: string; label: string }> = {
 };
 
 export default function TransactionsPage() {
-  const { fy, toast, bump } = useApp();
+  const { fy, toast, bump, accountId, accounts } = useApp();
   const [direction, setDirection] = useState<"" | "credit" | "debit">("");
   const [status, setStatus] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -31,7 +31,7 @@ export default function TransactionsPage() {
   const dq = useDeferredValue(q);
 
   const { data: cats } = useData(() => api.get<Category[]>("/api/categories"), []);
-  const { data: people } = useData(() => api.get<PersonSummary[]>("/api/people", { fy }), [fy]);
+  const { data: people } = useData(() => api.get<PersonSummary[]>("/api/people", { fy, account_id: accountId }), [fy, accountId]);
   const { data: txs, reload } = useData(
     () =>
       api.get<Txn[]>("/api/transactions", {
@@ -42,8 +42,9 @@ export default function TransactionsPage() {
         q: dq,
         flagged: flagged || undefined,
         person_id: personId,
+        account_id: accountId,
       }),
-    [fy, direction, status, categoryId, dq, flagged, personId],
+    [fy, direction, status, categoryId, dq, flagged, personId, accountId],
   );
 
   const months = useMemo(
@@ -204,7 +205,14 @@ export default function TransactionsPage() {
 
       <div className="space-y-4">
         {visibleMonths.map((m) => (
-          <MonthCard key={m.month} stat={m} rows={byMonth.get(m.month) ?? []} cats={cats ?? []} onCategory={setCat} />
+          <MonthCard
+            key={m.month}
+            stat={m}
+            rows={byMonth.get(m.month) ?? []}
+            cats={cats ?? []}
+            onCategory={setCat}
+            showAccount={!accountId && accounts.length > 1}
+          />
         ))}
       </div>
 
@@ -227,11 +235,13 @@ function MonthCard({
   rows,
   cats,
   onCategory,
+  showAccount,
 }: {
   stat: MonthStat;
   rows: Txn[];
   cats: Category[];
   onCategory: (t: Txn, id: number) => void;
+  showAccount: boolean;
 }) {
   const net = stat.credit - stat.debit;
   const review = rows.filter((r) => r.status !== "confirmed").length;
@@ -283,6 +293,7 @@ function MonthCard({
                   <td className="min-w-64">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-[13.5px] font-medium">{t.counterparty || <span className="text-ink-3">Unknown payee</span>}</span>
+                      {showAccount && <span className="chip">{t.account}</span>}
                       {t.person && (
                         <Link href={`/people#${t.person_id}`} className="chip chip-ok">
                           {t.person}

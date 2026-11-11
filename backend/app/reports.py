@@ -110,12 +110,16 @@ def build_excel(s: Session, fy: str) -> Path:
     ws.column_dimensions["A"].width = 42
     ws.column_dimensions["B"].width = 22
 
+    from .banks import bank_name
+    from .models import Account
+
+    acct_label = {a.id: f"{a.nickname or bank_name(a.bank)} {a.masked_number}".strip() for a in s.exec(select(Account))}
     tx_rows, credit_cat, debit_cat, interest, trading, cash, flagged = [], defaultdict(int), defaultdict(int), [], [], [], []
     for tx, c, cat in rows:
         cname = cat.name if cat else ""
         status = c.status if c else "unclassified"
         fl = flags.get(tx.id, [])
-        base = [tx.txn_date, tx.value_date, tx.raw_description, tx.ref_no, _r(tx.debit) or None, _r(tx.credit) or None,
+        base = [tx.txn_date, acct_label.get(tx.account_id, ""), tx.raw_description, tx.ref_no, _r(tx.debit) or None, _r(tx.credit) or None,
                 _r(tx.balance)]
         tx_rows.append(base + [cname, HEAD_OF.get(cat.treatment, "") if cat and tx.credit else "", status,
                                c.source if c else "", c.note if c else "", "; ".join(f.type for f in fl)])
@@ -135,7 +139,7 @@ def build_excel(s: Session, fy: str) -> Path:
                             c.note if c else ""])
 
     _sheet(wb, "All transactions",
-           ["Date", "Value date", "Bank narration (original)", "Ref / Chq", "Debit", "Credit", "Balance",
+           ["Date", "Account", "Bank narration (original)", "Ref / Chq", "Debit", "Credit", "Balance",
             "Category", "Income head", "Status", "Classified by", "Note", "Flags"], tx_rows, (5, 6, 7))
     _sheet(wb, "Credits by category", ["Category", "Amount"],
            [[k, _r(v)] for k, v in sorted(credit_cat.items(), key=lambda x: -x[1])], (2,))

@@ -96,7 +96,7 @@ function TaxForm({ fy, initial }: { fy: string; initial: { inputs: Inputs; estim
 
   return (
     <>
-      <PageHeader title="Tax estimate" sub={`${est.label} · ${est.act}`} actions={<span className="text-ink-3 text-[12px]">{dirty ? "Saving…" : "Saved"}</span>} />
+      <PageHeader title="Tax estimate" sub={`${est.label} · ${est.act} · all bank accounts combined`} actions={<span className="text-ink-3 text-[12px]">{dirty ? "Saving…" : "Saved"}</span>} />
 
       <div className="bg-warn-soft text-warn mb-4 rounded-lg px-4 py-3 text-[13.5px] font-medium">{est.disclaimer}</div>
 

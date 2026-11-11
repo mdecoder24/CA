@@ -22,10 +22,13 @@ const useHashId = () =>
   );
 
 export default function PeoplePage() {
-  const { fy, toast, bump } = useApp();
+  const { fy, toast, bump, accountId } = useApp();
   const hashId = useHashId();
-  const { data: people, reload } = useData(() => api.get<PersonSummary[]>("/api/people", { fy }), [fy]);
-  const { data: suggestions, reload: reloadSug } = useData(() => api.get<PersonSuggestion[]>("/api/people-suggestions", { fy }), [fy]);
+  const { data: people, reload } = useData(() => api.get<PersonSummary[]>("/api/people", { fy, account_id: accountId }), [fy, accountId]);
+  const { data: suggestions, reload: reloadSug } = useData(
+    () => api.get<PersonSuggestion[]>("/api/people-suggestions", { fy, account_id: accountId }),
+    [fy, accountId],
+  );
   const [adding, setAdding] = useState(false);
 
   const selected = people?.find((p) => p.id === hashId) ?? people?.[0] ?? null;
@@ -164,8 +167,11 @@ function AddPerson({ onAdd }: { onAdd: (name: string, pattern: string) => void }
 }
 
 function PersonLedger({ personId, onChanged }: { personId: number; onChanged: () => void }) {
-  const { fy, toast } = useApp();
-  const { data: d, reload } = useData(() => api.get<Ledger>(`/api/people/${personId}/ledger`, { fy }), [personId, fy]);
+  const { fy, toast, accountId } = useApp();
+  const { data: d, reload } = useData(
+    () => api.get<Ledger>(`/api/people/${personId}/ledger`, { fy, account_id: accountId }),
+    [personId, fy, accountId],
+  );
   const { data: cats } = useData(() => api.get<Category[]>("/api/categories"), []);
   const [view, setView] = useState<"all" | "in" | "out">("all");
   const [month, setMonth] = useState("");

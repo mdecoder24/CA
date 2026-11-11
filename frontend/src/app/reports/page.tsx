@@ -37,7 +37,10 @@ export default function ReportsPage() {
 
   return (
     <>
-      <PageHeader title="CA pack" sub={`Everything your CA needs for FY ${fy}, in one workbook plus a short PDF summary.`} />
+      <PageHeader
+        title="CA pack"
+        sub={`Everything your CA needs for FY ${fy}, in one workbook plus a short PDF summary. Always covers all bank accounts.`}
+      />
 
       {d && (d.unclassified_credits > 0 || d.open_flags > 0 || d.gaps.length > 0) && (
         <div className="bg-warn-soft text-warn mb-4 rounded-lg px-4 py-3 text-[13.5px]">
