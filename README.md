@@ -90,6 +90,16 @@ Full spend analysis for the financial year:
 
 These figures are a reading of your bank data, not financial advice. Most spending is uncategorised until you confirm it in Review, so confirm categories to sharpen the picture.
 
+### People
+Separate ledgers for people money goes back and forth with, such as Hrishikesh Reddy.
+
+- **Track a person:** give a name and the text the bank always prints for them. Banks cut names short ("Mr Hrishik", "Hrishikesh Redd"), so a short first-name fragment such as `hrishi` usually works best. The **Suggested** list shows people who both paid you and were paid by you, and **Track** adds one in a click.
+- **Ledger:** shows totals received and sent, the net ("in your favour" or "out of pocket"), a month-by-month chart, and every transaction with a running net.
+- **Say what this money was:** pick one category for all money received and one for all money sent. For example, "Loan repaid to me" and "Loan given / money lent". Every row in that direction is then confirmed.
+- **Kept separate:** tracked people's transactions are excluded from spending and money-in totals on the Spend page, and listed under **Tracked people** instead.
+- Pinned people appear in the sidebar under People, with their net amount.
+- **Remove** stops tracking. The transactions themselves are never changed.
+
 ### Review
 Confirm what each credit and debit was.
 
@@ -103,7 +113,13 @@ Confirm what each credit and debit was.
 Only **confirmed** credits count towards income in the tax estimate and the dashboard. Suggested items are shown separately.
 
 ### Transactions
-A filterable table of every transaction. Bank columns are read-only. You can change the category inline.
+Every bank entry for the year, newest first, grouped by month with in/out totals for each month.
+
+- Each row shows **who** (the payee name taken from the narration) in bold, with the exact bank narration below it in small grey text.
+- One signed **Amount** column: green `+` for money in, `−` for money out.
+- Filters: All / Money in / Money out, search, status (**Needs review** or **Confirmed**), category, person, and **Flagged only**. The totals cards above the table follow the filters.
+- Change a category from the dropdown; the dot under it shows whether it is confirmed, suggested by a rule, or not categorised.
+- Tracked people get a green tag that links to their ledger.
 
 ### Tax estimate
 Enter Form 16 figures, TDS, advance tax, broker P&L, freelance expenses and deductions. The estimate updates about one second after you stop typing.
@@ -200,7 +216,7 @@ To reset everything and start empty, stop the app and delete the `data/` folder.
 ## 8. Development
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q        # backend tests (31)
+cd backend && .venv/bin/python -m pytest -q        # backend tests (34)
 cd frontend && pnpm exec tsc --noEmit && pnpm exec eslint src
 cd frontend && pnpm exec next build                # production build check
 ```
@@ -215,10 +231,11 @@ backend/app/            FastAPI app
   tax/rules/*.yaml      tax rules per financial year
   classify.py           rules engine, counterparty extraction, local AI
   spend.py              spend analytics and risk score
+  people.py             tracked-people ledgers and suggestions
   reports.py            Excel and PDF CA pack
   seed.py               default categories and built-in rules
 backend/tests/          test suite
-frontend/src/app/       pages (dashboard, spend, review, transactions, imports, tax, reports, rules, settings)
+frontend/src/app/       pages (dashboard, spend, review, transactions, people, imports, tax, reports, rules, settings)
 frontend/src/components shared UI and spend components
 docs/superpowers/specs/ design document
 ```

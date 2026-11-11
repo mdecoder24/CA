@@ -91,7 +91,10 @@ SEED_V2_RULES = [
 SEED_V3_RULES = [
     (r"^pg\s*os\w*cc\b|cheq\s*digital|\bcred\s*club|amex|card\s*bill", "regex", "debit", "Credit card bill", False, 44),
 ]
-SEED_VERSION = 3
+SEED_V4_CATEGORIES = [
+    ("Loan given / money lent", "debit", "not_income"),
+]
+SEED_VERSION = 4
 
 DEFAULT_SETTINGS = {
     "anomaly": {"large_credit_paise": 50_000_00, "round_repeat_min": 3, "round_unit_paise": 1_000_00},
@@ -143,6 +146,11 @@ def seed(s: Session) -> None:
         for pattern, mtype, direction, cat, auto, prio in SEED_V3_RULES:
             s.add(Rule(profile_id=profile.id, priority=prio, match_type=mtype, pattern=pattern,
                        direction=direction, category_id=cats[(cat, direction)], auto_confirm=auto, builtin=True))
+    if current < 4:
+        existing = {(c.name, c.direction) for c in s.exec(select(Category))}
+        for name, direction, treatment in SEED_V4_CATEGORIES:
+            if (name, direction) not in existing:
+                s.add(Category(profile_id=profile.id, name=name, direction=direction, treatment=treatment, sort=510))
     if ver is None:
         s.add(Setting(key="seed_version", value={"v": SEED_VERSION}))
     else:

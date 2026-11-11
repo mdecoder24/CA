@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, type PersonSummary } from "@/lib/api";
 
 type Toast = { id: number; text: string; tone: "ok" | "error" };
 type Ctx = {
@@ -28,6 +28,7 @@ const NAV = [
   { href: "/spend", label: "Spend" },
   { href: "/review", label: "Review" },
   { href: "/transactions", label: "Transactions" },
+  { href: "/people", label: "People" },
   { href: "/imports", label: "Imports" },
   { href: "/tax", label: "Tax estimate" },
   { href: "/reports", label: "CA pack" },
@@ -42,7 +43,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [version, setVersion] = useState(0);
   const [backendDown, setBackendDown] = useState(false);
+  const [people, setPeople] = useState<PersonSummary[]>([]);
   const nextId = useRef(1);
+
+  useEffect(() => {
+    if (!fy) return;
+    api
+      .get<PersonSummary[]>("/api/people", { fy })
+      .then((p) => setPeople(p.filter((x) => x.pinned)))
+      .catch(() => setPeople([]));
+  }, [fy, version]);
 
   const bump = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -103,15 +113,33 @@ export function Shell({ children }: { children: React.ReactNode }) {
             {NAV.map((n) => {
               const active = n.href === "/" ? path === "/" : path.startsWith(n.href);
               return (
-                <Link
-                  key={n.href}
-                  href={n.href}
-                  className={`shrink-0 rounded-lg px-3 py-1.5 text-[13.5px] ${
-                    active ? "bg-accent-soft text-accent font-semibold" : "text-ink-2 hover:bg-surface-2"
-                  }`}
-                >
-                  {n.label}
-                </Link>
+                <div key={n.href} className="contents md:block">
+                  <Link
+                    href={n.href}
+                    className={`block shrink-0 rounded-lg px-3 py-1.5 text-[13.5px] ${
+                      active ? "bg-accent-soft text-accent font-semibold" : "text-ink-2 hover:bg-surface-2"
+                    }`}
+                  >
+                    {n.label}
+                  </Link>
+                  {n.href === "/people" && people.length > 0 && (
+                    <div className="border-line mt-0.5 mb-1 ml-4 hidden border-l pl-1 md:block">
+                      {people.map((p) => (
+                        <Link
+                          key={p.id}
+                          href={`/people#${p.id}`}
+                          className="text-ink-2 hover:bg-surface-2 flex items-center justify-between gap-2 rounded-lg py-1 pr-2 pl-2.5 text-[12.5px]"
+                        >
+                          <span className="truncate">{p.name}</span>
+                          <span className={`num shrink-0 text-[11px] ${p.net >= 0 ? "text-credit" : "text-ink-3"}`}>
+                            {p.net >= 0 ? "+" : "−"}
+                            {compactInr(Math.abs(p.net))}
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </nav>
@@ -152,6 +180,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </div>
     </AppCtx.Provider>
   );
+}
+
+export function compactInr(p: number) {
+  const r = p / 100;
+  if (r >= 1e7) return `₹${(r / 1e7).toFixed(1)}Cr`;
+  if (r >= 1e5) return `₹${(r / 1e5).toFixed(1)}L`;
+  if (r >= 1e3) return `₹${(r / 1e3).toFixed(0)}k`;
+  return `₹${r.toFixed(0)}`;
 }
 
 export function PageHeader({ title, sub, actions }: { title: string; sub?: React.ReactNode; actions?: React.ReactNode }) {

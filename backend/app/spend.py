@@ -113,7 +113,20 @@ def analyse(s: Session, start: date, end: date, account_id: Optional[int] = None
     # Unconfirmed person-to-person flows, grouped loosely by name, for the two-way view.
     two_way: dict[str, dict] = defaultdict(lambda: {"in": 0, "out": 0, "names": defaultdict(int), "n_in": 0, "n_out": 0})
 
+    from .people import load_people, person_for
+
+    tracked = load_people(s)
+    people_flows: dict[int, dict] = {}
+
     for tx, c, cat in rows:
+        # Tracked people have their own ledger; keep them out of spend and inflow.
+        who = person_for(tx.raw_description, tracked)
+        if who is not None:
+            pf = people_flows.setdefault(who.id, {"id": who.id, "name": who.name, "received": 0, "sent": 0, "count": 0})
+            pf["received"] += tx.credit
+            pf["sent"] += tx.debit
+            pf["count"] += 1
+            continue
         status = c.status if c else "unclassified"
         treatment = cat.treatment if cat else None
         name = cat.name if cat else None
@@ -317,6 +330,8 @@ def analyse(s: Session, start: date, end: date, account_id: Optional[int] = None
     return {
         "start": start.isoformat(), "end": end.isoformat(), "empty": False,
         "two_way": flows[:10], "pass_through": pass_through,
+        "people": sorted(({**v, "net": v["received"] - v["sent"]} for v in people_flows.values()),
+                         key=lambda x: -(x["received"] + x["sent"])),
         "first_txn": first.isoformat(), "last_txn": last.isoformat(), "months": round(months, 2),
         "spend_total": spend_total, "monthly_avg": int(monthly_spend), "inflow": inflow,
         "uncategorised": uncategorised, "spend_on_suggestion": spend_on_suggestion,

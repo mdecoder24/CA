@@ -30,6 +30,7 @@ export type Spend = {
   disclaimer: string;
   two_way: { name: string; aliases: string[]; received: number; sent: number; net: number; count_in: number; count_out: number }[];
   pass_through: number;
+  people: { id: number; name: string; received: number; sent: number; net: number; count: number }[];
 };
 
 const LEVEL = {
@@ -124,7 +125,14 @@ export function CategoryBars({ d, limit = 12 }: { d: Spend; limit?: number }) {
         return (
           <li key={c.category} title={`${c.count} transactions`}>
             <div className="flex items-baseline justify-between gap-3 text-[13px]">
-              <span className={`truncate ${unc ? "text-ink-2 italic" : ""}`}>{c.category}</span>
+              <span className={`truncate ${unc ? "text-ink-2 italic" : ""}`}>
+                {c.category}
+                {unc && (
+                  <Link href="/review" className="text-accent ml-2 text-[12px] not-italic underline-offset-2 hover:underline">
+                    Categorise
+                  </Link>
+                )}
+              </span>
               <span className="num shrink-0">
                 {paise(c.amount, true)}{" "}
                 <span className="text-ink-3 text-[11.5px]">{c.share < 0.005 ? "<1%" : `${(c.share * 100).toFixed(0)}%`}</span>
@@ -250,6 +258,77 @@ export function TwoWay({ d }: { d: Spend }) {
           ))}
         </tbody>
       </table>
+    </section>
+  );
+}
+
+/** One-paragraph plain-language summary of the period. */
+export function PlainSummary({ d }: { d: Spend }) {
+  const top = d.categories.find((c) => c.category !== "Not yet categorised");
+  const unc = d.categories.find((c) => c.category === "Not yet categorised");
+  const lv = LEVEL[d.risk.level];
+  const dangers = d.risk.signals.filter((s) => s.level === "danger").map((s) => s.title.toLowerCase());
+  return (
+    <section className="card p-4 md:p-5">
+      <p className="text-[15px] leading-relaxed">
+        From <b>{fmtDate(d.first_txn)}</b> to <b>{fmtDate(d.last_txn)}</b> you spent <b className="num">{paise(d.spend_total, true)}</b>, about{" "}
+        <b className="num">{paise(d.monthly_avg, true)}</b> a month, against <b className="num">{paise(d.inflow, true)}</b> of new money in.
+        {top && (
+          <>
+            {" "}
+            The biggest known spend was <b>{top.category.toLowerCase()}</b> ({paise(top.amount, true)}).
+          </>
+        )}
+        {unc && unc.share > 0.2 && (
+          <>
+            {" "}
+            <span className="text-warn">{Math.round(unc.share * 100)}% isn’t categorised yet</span>, so the picture will sharpen as you review.
+          </>
+        )}
+      </p>
+      <p className="text-ink-2 mt-2 text-[13.5px]">
+        Risk is <span className={`font-semibold ${lv.ink}`}>{lv.label.toLowerCase()}</span> ({d.risk.score}/100)
+        {dangers.length > 0 ? <> mainly because of {dangers.join(" and ")}.</> : "."}
+        {d.people.length > 0 && (
+          <>
+            {" "}
+            {d.people.map((p) => p.name).join(", ")} {d.people.length === 1 ? "is" : "are"} tracked separately and not counted here.
+          </>
+        )}
+      </p>
+    </section>
+  );
+}
+
+export function TrackedPeople({ d }: { d: Spend }) {
+  if (!d.people.length) return null;
+  return (
+    <section className="card p-4">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-[14px] font-semibold">Tracked people</h2>
+        <Link href="/people" className="text-accent text-[12.5px] underline-offset-2 hover:underline">
+          Open People
+        </Link>
+      </div>
+      <p className="text-ink-3 text-[12px]">Kept out of spending and money-in totals above.</p>
+      <ul className="mt-2 space-y-2">
+        {d.people.map((p) => (
+          <li key={p.id}>
+            <Link href={`/people#${p.id}`} className="hover:bg-surface-2 -mx-2 flex items-center justify-between gap-3 rounded-lg px-2 py-1.5">
+              <div className="min-w-0">
+                <div className="truncate text-[13.5px] font-medium">{p.name}</div>
+                <div className="text-ink-3 num text-[11.5px]">
+                  in {paise(p.received, true)} · out {paise(p.sent, true)} · {p.count} txns
+                </div>
+              </div>
+              <span className={`num shrink-0 text-[14px] font-semibold ${p.net >= 0 ? "text-credit" : ""}`}>
+                {p.net >= 0 ? "+" : "−"}
+                {paise(Math.abs(p.net), true)}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

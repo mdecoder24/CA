@@ -153,3 +153,16 @@ class AuditLog(SQLModel, table=True):
 class Setting(SQLModel, table=True):
     key: str = Field(primary_key=True)
     value: dict = Field(default_factory=dict, sa_column=Column(JSON))
+
+
+class Person(SQLModel, table=True):
+    """Someone whose transactions are tracked as a separate ledger (e.g. a friend or relative
+    money goes back and forth with). Matched by a case-insensitive pattern on the bank narration."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    profile_id: int = Field(foreign_key="profile.id")
+    name: str
+    pattern: str
+    pinned: bool = True
+    note: str = ""
+    created_at: datetime = Field(default_factory=now)

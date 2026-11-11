@@ -69,6 +69,8 @@ export const api = {
 export type Flag = { id: number; type: string; detail: string; resolved: boolean; resolution_note: string };
 export type Txn = {
   id: number;
+  person_id: number | null;
+  person: string | null;
   txn_date: string;
   value_date: string | null;
   raw_description: string;
@@ -167,4 +169,60 @@ export const fmtDate = (iso: string | null) => {
 export const monthLabel = (ym: string) => {
   const [y, m] = ym.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleString("en-IN", { month: "short" });
+};
+
+export type PersonSummary = {
+  id: number;
+  name: string;
+  pattern: string;
+  pinned: boolean;
+  note: string;
+  received: number;
+  sent: number;
+  net: number;
+  count: number;
+  last: string | null;
+};
+export type PersonSuggestion = {
+  key: string;
+  name: string;
+  pattern: string;
+  received: number;
+  sent: number;
+  count: number;
+  names_seen: string[];
+};
+export type LedgerRow = {
+  id: number;
+  date: string;
+  narration: string;
+  ref_no: string;
+  received: number;
+  sent: number;
+  running_net: number;
+  direction: "credit" | "debit";
+  category_id: number | null;
+  category: string | null;
+  status: "unclassified" | "suggested" | "confirmed";
+  note: string;
+};
+export type Ledger = {
+  person: { id: number; name: string; pattern: string; pinned: boolean; note: string };
+  start: string;
+  end: string;
+  received: number;
+  sent: number;
+  net: number;
+  count: number;
+  count_in: number;
+  count_out: number;
+  first: string | null;
+  last: string | null;
+  largest_in: number;
+  largest_out: number;
+  monthly: { month: string; received: number; sent: number }[];
+  by_category: { category: string; received: number; sent: number; count: number }[];
+  names_seen: string[];
+  unconfirmed: number;
+  rows: LedgerRow[];
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { CategoryBars, MonthlySpend, RiskHeader, Signals, type Spend, TwoWay } from "@/components/spend-report";
+import { CategoryBars, MonthlySpend, PlainSummary, RiskHeader, Signals, type Spend, TrackedPeople, TwoWay } from "@/components/spend-report";
 import { Empty, PageHeader, useApp } from "@/components/shell";
 import { api, fmtDate, paise } from "@/lib/api";
 import { useData } from "@/lib/use-data";
@@ -25,11 +25,15 @@ export default function SpendPage() {
     <>
       <PageHeader title="Spend" sub={`Where your money went in FY ${fy}, and how risky the pattern is. ${d.disclaimer}`} />
 
-      <RiskHeader d={d} />
+      <PlainSummary d={d} />
 
-      {d.notes.length > 0 && (
+      <div className="mt-3">
+        <RiskHeader d={d} />
+      </div>
+
+      {d.notes.filter((n) => !n.includes("not yet categorised")).length > 0 && (
         <div className="bg-warn-soft text-warn mt-3 rounded-lg px-4 py-3 text-[13px]">
-          {d.notes.map((n, i) => (
+          {d.notes.filter((n) => !n.includes("not yet categorised")).map((n, i) => (
             <div key={i}>{n}</div>
           ))}
         </div>
@@ -49,6 +53,12 @@ export default function SpendPage() {
           <CategoryBars d={d} />
         </section>
       </div>
+
+      {d.people.length > 0 && (
+        <div className="mt-3">
+          <TrackedPeople d={d} />
+        </div>
+      )}
 
       <TwoWay d={d} />
 

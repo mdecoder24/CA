@@ -23,8 +23,10 @@ from .classify import apply_rules, extract_counterparty, llm_suggest, set_classi
 from .db import data_dir, get_session, init_db
 from .importers.base import PasswordRequired, StatementError
 from .ingest import ImportRejected, import_statement, recheck_batch
-from .models import (Account, AuditLog, Category, Classification, Flag, ImportBatch, RawTransaction, Rule, Setting,
-                     TaxInput)
+from .models import (Account, AuditLog, Category, Classification, Flag, ImportBatch, Person, RawTransaction, Rule,
+                     Setting, TaxInput)
+from .people import compile_pattern, ledger as person_ledger, load_people, person_for, \
+    suggestions as people_suggestions, summaries as people_summaries
 from .spend import analyse as spend_analyse
 from .summary import dashboard, fy_rows, tax_estimate
 from .tax import engine
@@ -118,8 +120,10 @@ def recheck_import(batch_id: int, password: str = Form(""), s: Session = Depends
 
 
 # ---------------------------------------------------------------- transactions
-def _tx_out(tx: RawTransaction, c: Optional[Classification], cat: Optional[Category], flags: list[Flag]):
+def _tx_out(tx: RawTransaction, c: Optional[Classification], cat: Optional[Category], flags: list[Flag],
+            person: Optional[Person] = None):
     return {
+        "person_id": person.id if person else None, "person": person.name if person else None,
         "id": tx.id, "txn_date": tx.txn_date, "value_date": tx.value_date, "raw_description": tx.raw_description,
         "ref_no": tx.ref_no, "debit": tx.debit, "credit": tx.credit, "balance": tx.balance,
         "direction": "credit" if tx.credit else "debit",
@@ -143,10 +147,14 @@ def _flags_by_tx(s: Session) -> dict[int, list[Flag]]:
 @app.get("/api/transactions")
 def list_transactions(fy: str, direction: Optional[str] = None, status: Optional[str] = None,
                       category_id: Optional[int] = None, q: Optional[str] = None, month: Optional[str] = None,
-                      flagged: bool = False, s: Session = Depends(get_session)):
+                      flagged: bool = False, person_id: Optional[int] = None, s: Session = Depends(get_session)):
     flags = _flags_by_tx(s)
+    people = load_people(s)
     out = []
     for tx, c, cat in fy_rows(s, fy):
+        who = person_for(tx.raw_description, people)
+        if person_id is not None and (who is None or who.id != person_id):
+            continue
         d = "credit" if tx.credit else "debit"
         st = c.status if c else "unclassified"
         if direction and d != direction:
@@ -167,13 +175,14 @@ def list_transactions(fy: str, direction: Optional[str] = None, status: Optional
             if ql not in tx.raw_description.lower() and ql not in (c.note.lower() if c else "") \
                     and ql not in tx.ref_no.lower():
                 continue
-        out.append(_tx_out(tx, c, cat, flags.get(tx.id, [])))
+        out.append(_tx_out(tx, c, cat, flags.get(tx.id, []), who))
     return out
 
 
 @app.get("/api/review")
 def review_queue(fy: str, direction: str = "credit", s: Session = Depends(get_session)):
     flags = _flags_by_tx(s)
+    people = load_people(s)
     items = []
     for tx, c, cat in fy_rows(s, fy):
         d = "credit" if tx.credit else "debit"
@@ -183,7 +192,7 @@ def review_queue(fy: str, direction: str = "credit", s: Session = Depends(get_se
         unexplained = cat is not None and cat.treatment == "unexplained"
         if (c and c.status == "confirmed") and not open_flags and not unexplained:
             continue
-        items.append(_tx_out(tx, c, cat, flags.get(tx.id, [])))
+        items.append(_tx_out(tx, c, cat, flags.get(tx.id, []), person_for(tx.raw_description, people)))
     items.sort(key=lambda x: (0 if any(not f["resolved"] for f in x["flags"]) else 1,
                               0 if x["status"] == "suggested" else 1, -(x["credit"] or x["debit"])))
     return items
@@ -382,6 +391,91 @@ def ai_suggest(s: Session = Depends(get_session)):
     res = llm_suggest(s, 1)
     run_flags(s)
     return res
+
+
+# ---------------------------------------------------------------- people
+def _fy_or_400(fy: str):
+    try:
+        return fy_range(fy)
+    except (ValueError, IndexError):
+        raise HTTPException(400, "fy must look like 2026-27")
+
+
+class PersonIn(BaseModel):
+    name: str
+    pattern: str
+    pinned: bool = True
+    note: str = ""
+
+
+def _check_person(body: PersonIn) -> None:
+    if not body.name.strip():
+        raise HTTPException(400, "Name is required")
+    try:
+        compile_pattern(body.pattern)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/people")
+def list_people(fy: str, s: Session = Depends(get_session)):
+    start, end = _fy_or_400(fy)
+    return people_summaries(s, start, end)
+
+
+@app.get("/api/people-suggestions")
+def suggest_people(fy: str, s: Session = Depends(get_session)):
+    start, end = _fy_or_400(fy)
+    return people_suggestions(s, start, end)
+
+
+@app.post("/api/people")
+def create_person(body: PersonIn, s: Session = Depends(get_session)):
+    _check_person(body)
+    p = Person(profile_id=1, name=body.name.strip()[:80], pattern=body.pattern.strip(), pinned=body.pinned,
+               note=body.note[:500])
+    s.add(p)
+    s.flush()
+    audit(s, "person", p.id, "create", after=p)
+    s.commit()
+    s.refresh(p)
+    return p
+
+
+@app.put("/api/people/{person_id}")
+def update_person(person_id: int, body: PersonIn, s: Session = Depends(get_session)):
+    p = s.get(Person, person_id)
+    if p is None:
+        raise HTTPException(404, "Person not found")
+    _check_person(body)
+    before = p.model_dump()
+    p.name, p.pattern, p.pinned, p.note = body.name.strip()[:80], body.pattern.strip(), body.pinned, body.note[:500]
+    s.add(p)
+    audit(s, "person", p.id, "update", before=before, after=p)
+    s.commit()
+    s.refresh(p)
+    return p
+
+
+@app.delete("/api/people/{person_id}")
+def delete_person(person_id: int, s: Session = Depends(get_session)):
+    """Stops tracking the person. Their transactions are untouched."""
+    p = s.get(Person, person_id)
+    if p is None:
+        raise HTTPException(404, "Person not found")
+    audit(s, "person", p.id, "delete", before=p)
+    s.delete(p)
+    s.commit()
+    return {"ok": True}
+
+
+@app.get("/api/people/{person_id}/ledger")
+def get_person_ledger(person_id: int, fy: str, s: Session = Depends(get_session)):
+    p = s.get(Person, person_id)
+    if p is None:
+        raise HTTPException(404, "Person not found")
+    start, end = _fy_or_400(fy)
+    return person_ledger(s, p, start, end)
 
 
 # ---------------------------------------------------------------- spend
