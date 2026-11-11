@@ -1,9 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { monthTitle } from "@/components/month-strip";
+import { MonthCalendar, StatementUploader, type UploaderHandle } from "@/components/statement-upload";
 import { PageHeader, useApp } from "@/components/shell";
 import { type Spend, SpendSnapshot } from "@/components/spend-report";
-import { type Account, api, ApiError, type Bank, fmtDate, type ImportBatch, paise } from "@/lib/api";
+import { type Account, api, type Bank, fmtDate, type ImportBatch, type MonthCoverage, paise } from "@/lib/api";
 import { useData } from "@/lib/use-data";
 
 const STATUS: Record<string, { text: string; cls: string }> = {
@@ -214,69 +216,42 @@ function AccountSection({
   snapshot: Spend | null;
   onPick: (id: number) => void;
 }) {
-  const { toast, bump } = useApp();
-  const { data: batches } = useData(() => api.get<ImportBatch[]>("/api/imports", { account_id: account.id }), [account.id]);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const [password, setPassword] = useState("");
-  const [needPassword, setNeedPassword] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
-  const [mismatch, setMismatch] = useState<string | null>(null);
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
+  const { fy, toast, bump } = useApp();
+  const { data: batches, reload } = useData(() => api.get<ImportBatch[]>("/api/imports", { account_id: account.id }), [account.id]);
+  const { data: coverage, reload: reloadCoverage } = useData(
+    () => api.get<MonthCoverage[]>(`/api/accounts/${account.id}/coverage`, { fy }),
+    [account.id, fy],
+  );
+  const uploader = useRef<UploaderHandle>(null);
   const [editing, setEditing] = useState(false);
-
-  const reset = () => {
-    setFile(null);
-    setPassword("");
-    setNeedPassword(false);
-    setFailure(null);
-    setMismatch(null);
-    setReason("");
-    if (fileRef.current) fileRef.current.value = "";
-  };
-
-  const submit = async (opts: { override?: boolean; force?: boolean } = {}) => {
-    if (!file) return;
-    setBusy(true);
-    const form = new FormData();
-    form.append("file", file);
-    form.append("account_id", String(account.id));
-    if (password) form.append("password", password);
-    if (opts.override) form.append("override_reason", reason);
-    if (opts.force) form.append("force_account", "true");
-    try {
-      const r = await api.upload<{ inserted: number; duplicates: number; batch: ImportBatch }>("/api/imports", form);
-      toast(`Imported ${r.inserted} transactions into ${account.nickname}${r.duplicates ? `, skipped ${r.duplicates} already imported` : ""}.`);
-      reset();
-      onImported(r.batch);
-    } catch (e) {
-      const err = e as ApiError;
-      if (err.code === "password_required") {
-        setNeedPassword(true);
-        toast(err.message, "error");
-      } else if (err.code === "reconcile_failed") {
-        setFailure(err.message);
-      } else if (err.code === "account_mismatch") {
-        setMismatch(err.message);
-      } else {
-        toast(err.message, "error");
-      }
-    } finally {
-      setBusy(false);
-      setPassword("");
-    }
-  };
 
   return (
     <>
+      {coverage && (
+        <MonthCalendar
+          months={coverage}
+          onAdd={(m) => {
+            const from =
+              m.status === "partial" && m.missing[0]
+                ? fmtDate(m.missing[0].from)
+                : m.status === "full" && account.last_date
+                  ? `after ${fmtDate(account.last_date)}`
+                  : fmtDate(m.from);
+            uploader.current?.focus(
+              `Add the ${account.bank_name} statement for ${monthTitle(m.month)} — starting ${from}. A longer statement that overlaps is fine.`,
+            );
+            toast(`Choose the ${monthTitle(m.month)} statement.`);
+          }}
+        />
+      )}
       <section className="card mt-4 p-4 md:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-[17px] font-semibold tracking-tight">Upload a {account.bank_name} statement</h2>
+            <h2 className="text-[17px] font-semibold tracking-tight">Add {account.bank_name} statements</h2>
             <p className="text-ink-3 text-[12.5px]">
-              Goes into <b className="text-ink-2">{account.nickname}</b>
-              {account.masked_number && <> ({account.masked_number})</>}.
+              Into <b className="text-ink-2">{account.nickname}</b>
+              {account.masked_number && <> ({account.masked_number})</>}
+              {account.last_date && <> · imported up to {fmtDate(account.last_date)}</>}
             </p>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={() => setEditing((v) => !v)}>
@@ -295,90 +270,19 @@ function AccountSection({
           />
         )}
 
-        <form
-          className="mt-4 flex flex-wrap items-end gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
+        <StatementUploader
+          ref={uploader}
+          account={account}
+          others={others}
+          onPick={onPick}
+          onImported={(b) => {
+            reload();
+            reloadCoverage();
+            onImported(b);
           }}
-        >
-          <label className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="label">Statement file</span>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,.xls,.xlsx,.pdf"
-              className="input py-1.5"
-              onChange={(e) => {
-                setFile(e.target.files?.[0] ?? null);
-                setFailure(null);
-                setMismatch(null);
-                setNeedPassword(false);
-              }}
-            />
-          </label>
-          {(needPassword || file?.name.toLowerCase().endsWith(".pdf")) && (
-            <label className="flex w-full flex-col gap-1 sm:w-56">
-              <span className="label">PDF password {needPassword ? "(required)" : "(if any)"}</span>
-              <input
-                type="password"
-                autoComplete="off"
-                className="input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoFocus={needPassword}
-              />
-            </label>
-          )}
-          <button type="submit" className="btn btn-primary" disabled={!file || busy}>
-            {busy ? "Importing…" : "Import"}
-          </button>
-        </form>
-        <p className="text-ink-3 mt-3 text-[12px]">
-          Every row is checked: previous balance + credit − debit must equal the printed balance. A PDF password is used once to open the file and is never saved.
-        </p>
-
-        {mismatch && (
-          <div className="bg-warn-soft mt-4 rounded-lg p-4">
-            <div className="text-warn text-[13.5px] font-semibold">This looks like a different account</div>
-            <p className="mt-1 text-[13.5px]">{mismatch}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {others.map((o) => (
-                <button key={o.id} className="btn btn-sm" onClick={() => onPick(o.id)}>
-                  Switch to {o.nickname}
-                </button>
-              ))}
-              <button className="btn btn-ghost btn-sm" onClick={() => submit({ force: true })} disabled={busy}>
-                It is this account, import anyway
-              </button>
-            </div>
-          </div>
-        )}
-
-        {failure && (
-          <div className="bg-danger-soft mt-4 rounded-lg p-4">
-            <div className="text-danger text-[13.5px] font-semibold">The statement did not reconcile</div>
-            <p className="mt-1 text-[13.5px]">{failure}</p>
-            <p className="text-ink-2 mt-2 text-[12.5px]">
-              Usually this means the file is incomplete or was read wrongly. Try another format (Excel instead of PDF). If you have checked the statement and want to import it anyway, write why. The reason goes into the audit trail and the CA pack.
-            </p>
-            <textarea
-              className="input mt-2 h-20 w-full py-2"
-              placeholder="e.g. Checked against passbook; the bank printed a wrong balance on 12-07."
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-            />
-            <div className="mt-2 flex gap-2">
-              <button className="btn" onClick={() => submit({ override: true })} disabled={reason.trim().length < 10 || busy}>
-                Import anyway
-              </button>
-              <button className="btn btn-ghost" onClick={reset}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
+        />
       </section>
+
 
       {snapshot && <SpendSnapshot d={snapshot} onClose={() => onSnapshot(null)} />}
 

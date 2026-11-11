@@ -62,7 +62,10 @@ Work through these screens in order.
 Each bank account has its own section.
 
 - **Add bank account:** choose the bank from the list, give the account a name (for example "HDFC Salary"), and enter the last 4 digits of the account number. Only those 4 digits are stored.
-- **Upload into a section:** click an account card, then upload its statement: CSV, XLS, XLSX or PDF. Each account keeps its own import history.
+- **Statements by month:** each account shows a tile for every month of the financial year: **Complete**, **Up to date** (the current month, imported up to yesterday), **Till dd/mm** (partly covered), **Missing** or **Upcoming**. Missing and partial months have an **Add statement** button; the current month has **Add newer**, for example to add statements after 10 Nov.
+- **Add statements:** drop files onto the box, or click it to choose. Several files at once are fine, one per month or any date range, as CSV, XLS, XLSX or PDF. They import one by one, each with its own result. Days already imported are skipped, so overlapping statements are safe. One PDF password box applies to all PDFs in the batch.
+- **Continuity check:** each new statement's opening balance must equal the last balance already stored before it. If it doesn't, the file still imports but is marked **check gap**, because transactions between the two statements may be missing.
+- **Statement period:** the period printed on the statement (for example "01 Apr 2026 - 10 Nov 2026") is used for coverage, so days without transactions still count as covered.
 - **Wrong-account guard:** if the statement's account number ends in different digits from the chosen account, the upload stops. You can switch to the right account or, if you are sure, import anyway.
 - **Transfers between your own accounts:** a debit in one account and the same amount credited to another within 3 days is suggested as "Transfer – own account" on both sides, so it is not counted as spending or income. Use **Find transfers between my accounts** to re-run this after importing older statements.
 - **Edit account** changes its name, bank or last 4 digits. An account can be removed only while it has no statements.
@@ -227,7 +230,7 @@ To reset everything and start empty, stop the app and delete the `data/` folder.
 ## 8. Development
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q        # backend tests (38)
+cd backend && .venv/bin/python -m pytest -q        # backend tests (41)
 cd frontend && pnpm exec tsc --noEmit && pnpm exec eslint src
 cd frontend && pnpm exec next build                # production build check
 ```
