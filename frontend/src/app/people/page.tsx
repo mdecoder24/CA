@@ -3,6 +3,7 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { CategorySelect, StatusChip } from "@/components/category-select";
+import { monthStats, MonthStrip, monthTitle } from "@/components/month-strip";
 import { Segmented } from "@/components/segmented";
 import { compactInr, Empty, PageHeader, useApp } from "@/components/shell";
 import { api, type Category, fmtDate, type Ledger, monthLabel, paise, type PersonSuggestion, type PersonSummary } from "@/lib/api";
@@ -167,12 +168,28 @@ function PersonLedger({ personId, onChanged }: { personId: number; onChanged: ()
   const { data: d, reload } = useData(() => api.get<Ledger>(`/api/people/${personId}/ledger`, { fy }), [personId, fy]);
   const { data: cats } = useData(() => api.get<Category[]>("/api/categories"), []);
   const [view, setView] = useState<"all" | "in" | "out">("all");
+  const [month, setMonth] = useState("");
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  const months = useMemo(
+    () =>
+      monthStats(
+        d?.rows ?? [],
+        (r) => r.date,
+        (r) => r.received,
+        (r) => r.sent,
+      ),
+    [d],
+  );
   const rows = useMemo(
-    () => (d?.rows ?? []).filter((r) => view === "all" || (view === "in" ? r.received : r.sent)).slice().reverse(),
-    [d, view],
+    () =>
+      (d?.rows ?? [])
+        .filter((r) => view === "all" || (view === "in" ? r.received : r.sent))
+        .filter((r) => !month || r.date.startsWith(month))
+        .slice()
+        .reverse(),
+    [d, view, month],
   );
 
   if (!d) return null;
@@ -285,7 +302,7 @@ function PersonLedger({ personId, onChanged }: { personId: number; onChanged: ()
 
       <section className="card overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4 pb-2">
-          <h3 className="text-[14px] font-semibold">All transactions</h3>
+          <h3 className="text-[14px] font-semibold">{month ? monthTitle(month) : "All transactions"}</h3>
           <Segmented
             value={view}
             onChange={setView}
@@ -296,6 +313,11 @@ function PersonLedger({ personId, onChanged }: { personId: number; onChanged: ()
             ]}
           />
         </div>
+        {months.length > 1 && (
+          <div className="px-4 pb-3">
+            <MonthStrip months={months} value={month} onChange={setMonth} />
+          </div>
+        )}
         <div className="max-h-[560px] overflow-auto">
           <table className="table">
             <thead>

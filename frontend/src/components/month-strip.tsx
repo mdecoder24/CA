@@ -50,7 +50,9 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       role="tab"
       aria-selected={active}
       onClick={onClick}
-      className={`btn h-auto shrink-0 flex-col items-start gap-0 px-3 py-2 text-left ${active ? "border-accent bg-accent-soft ring-accent ring-1" : ""}`}
+      className={`month-chip flex shrink-0 flex-col items-start rounded-lg border px-3 py-2 text-left ${
+        active ? "border-accent bg-accent-soft" : "border-line bg-surface hover:bg-surface-2"
+      }`}
     >
       {children}
     </button>
