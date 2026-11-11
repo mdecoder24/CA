@@ -1,9 +1,9 @@
 import io
 
 HDFC_CSV = """HDFC BANK Ltd.
-Account No : 50100123459999
+Account No : 000000009999
 Date,Narration,Chq./Ref.No.,Value Dt,Withdrawal Amt.,Deposit Amt.,Closing Balance
-01/05/25,UPI-RAHUL SHARMA-rahul@okhdfc-HDFC0001-412345678901-dinner,0000412345678901,01/05/25,500.00,,9500.00
+01/05/25,UPI-EXAMPLE PERSON-example@okhdfc-HDFC0001-000000000002-dinner,000000000001,01/05/25,500.00,,9500.00
 02/05/25,NEFT CR-ACME0001-ACME CORP-SALARY MAY,N12345,02/05/25,,50000.00,59500.00
 05/05/25,IMPS-UPI-SELF-TRANSFER TO KOTAK,I999,05/05/25,20000.00,,39500.00
 """
@@ -44,7 +44,7 @@ def test_hdfc_import_and_account_filter(client):
     assert r.json()["inserted"] == 3 and r.json()["batch"]["status"] == "ok"
     txs = client.get("/api/transactions", params={"fy": "2025-26", "account_id": hdfc["id"]}).json()
     assert len(txs) == 3 and all(t["account_id"] == hdfc["id"] for t in txs)
-    assert next(t for t in txs if "RAHUL" in t["raw_description"])["counterparty"] == "Rahul Sharma"
+    assert next(t for t in txs if "EXAMPLE PERSON" in t["raw_description"])["counterparty"] == "Example Person"
     assert client.get("/api/transactions", params={"fy": "2025-26", "account_id": 1}).json() == []
 
 

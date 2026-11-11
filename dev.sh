@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Start FinTrack: backend on 127.0.0.1:8000, frontend on localhost:3000.
+# Start a single-user local FinTrack instance. Data stays in this installation's data directory.
+# Backend on 127.0.0.1:8000, frontend on localhost:3000.
 # First run installs dependencies. Ctrl+C stops both.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -35,5 +36,6 @@ trap cleanup EXIT INT TERM
 (cd frontend && pnpm exec next dev --hostname 127.0.0.1 --port 3000) &
 
 echo ""
-echo "FinTrack is starting → http://127.0.0.1:3000"
+echo "FinTrack is starting locally → http://127.0.0.1:3000"
+echo "This is a single-user instance; do not share or publicly host it."
 wait

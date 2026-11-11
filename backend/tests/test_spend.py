@@ -48,15 +48,15 @@ def test_spend_bad_params(client):
 def test_person_key_groups_truncated_names():
     from app.spend import person_key
 
-    assert person_key("Mr Hrishik") == person_key("Hrishikesh Redd") == person_key("Hrishikesh") == "hrishi"
+    assert person_key("Mr Exampl") == person_key("Example Redd") == person_key("Example") == "exampl"
     assert person_key("Sagar Sand") != person_key("Sargar Sachin")
     assert person_key("Al") == ""
 
 
 def test_two_way_flows(client):
     csv = """Sl. No.,Transaction Date,Value Date,Description,Chq / Ref No.,Amount,Dr / Cr,Balance,Dr / Cr
-1,01-05-2025,01-05-2025,Recd:IMPS/1111111111/Mr Hrishik/KKBK/X1/IMPS,R1,"50,000.00",CR,"50,000.00",CR
-2,02-05-2025,02-05-2025,SentIMPS222222222222Hrishikesh/IDFB/IMPS,R2,"45,000.00",DR,"5,000.00",CR
+1,01-05-2025,01-05-2025,Recd:IMPS/000000000001/Mr Exampl/KKBK/X1/IMPS,R1,"50,000.00",CR,"50,000.00",CR
+2,02-05-2025,02-05-2025,SentIMPS000000000002Example/IDFB/IMPS,R2,"45,000.00",DR,"5,000.00",CR
 3,03-05-2025,03-05-2025,PG OSAMEXCC,R3,"1,000.00",DR,"4,000.00",CR
 """
     _up(client, "t.csv", csv)

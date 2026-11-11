@@ -149,17 +149,17 @@ function AddPerson({ onAdd }: { onAdd: (name: string, pattern: string) => void }
     >
       <label className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="label">Name</span>
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Hrishikesh Reddy" autoFocus />
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Example Person" autoFocus />
       </label>
       <label className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="label">Match bank narrations containing</span>
-        <input className="input" value={pattern} onChange={(e) => setPattern(e.target.value)} placeholder="first name, e.g. hrishi" />
+        <input className="input" value={pattern} onChange={(e) => setPattern(e.target.value)} placeholder="first name, e.g. exampl" />
       </label>
       <button className="btn btn-primary" disabled={!name.trim()}>
         Track
       </button>
       <p className="text-ink-3 w-full text-[12px]">
-        Use the shortest part of the name the bank always prints. Banks cut names short (“Mr Hrishik”, “Hrishikesh Redd”), so a first name usually works
+        Use the shortest part of the name the bank always prints. Banks cut names short (“Mr Exampl”, “Example Redd”), so a first name usually works
         best.
       </p>
     </form>

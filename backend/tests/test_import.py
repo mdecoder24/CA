@@ -40,10 +40,10 @@ def test_csv_import_classifies_and_flags(client):
     assert by_desc["Int.Pd:01-04"]["category"] == "Interest – savings"
     assert by_desc["Int.Pd:01-04"]["status"] == "confirmed"
     assert by_desc["IMPS/ZERODHA"]["category"] == "Trading – funds to broker"
-    assert by_desc["UPI/SWIGGY/5"]["category"] == "Food & groceries"
+    assert by_desc["UPI/SWIGGY/0"]["category"] == "Food & groceries"
     # Raw narration preserved exactly
-    assert by_desc["UPI/RAHUL SH"]["raw_description"] == "UPI/RAHUL SHARMA/509399999999/consulting"
-    assert by_desc["UPI/RAHUL SH"]["counterparty"] == "Rahul Sharma"
+    assert by_desc["UPI/EXAMPLE "]["raw_description"] == "UPI/EXAMPLE PERSON/000000000002/consulting"
+    assert by_desc["UPI/EXAMPLE "]["counterparty"] == "Example Person"
     flag_types = {f["type"] for t in txs for f in t["flags"]}
     assert {"large_credit", "cash_deposit"} <= flag_types
 
@@ -169,14 +169,14 @@ def test_kotak_summary_table_closing_balance(tmp_path):
 def test_counterparty_kotak_shapes():
     from app.classify import extract_counterparty as cp
 
-    assert cp("Recd:IMPS/609812695897/Nandanavan/KKBK/ X8303/Bill") == "Nandanavan"
-    assert cp("SentIMPS613809205786Chaitanya /HDFCX9403/V") == "Chaitanya"
-    assert cp("MB:811SENT FT HRISHIKESH 8143581810 KOTAK") == "Hrishikesh"
+    assert cp("Recd:IMPS/000000000004/Example Person/KKBK/ X8303/Bill") == "Example Person"
+    assert cp("SentIMPS000000000005Example Person /HDFCX0001/V") == "Example Person"
+    assert cp("MB:811SENT FT SYNTHETIC 000000000003 KOTAK") == "Synthetic"
     assert cp("NEFT HDFCH00995043028 HDFC MUTUAL FUND REDEMPTION") == "Hdfc Mutual Fund Redemption"
     assert cp("RTGS UTIBR72026091100099294 PAYU PAYMENTS PVT L") == "Payu Payments Pvt L"
-    assert cp("UPI/SAGAR FOOD COUR/645749021858/Pay To SAGAR FO") == "Sagar Food Cour"
-    assert cp("UPIM/NATIONAL STOCK EXCHANGE OF INDIA/663161754741") == "National Stock Exchange Of India"
-    assert cp("Cash Deposit by ramesh at SAROORNAGAR HYDERABAD") == "Ramesh"
+    assert cp("UPI/EXAMPLE CAFE/000000000006/Pay To EXAMPLE CA") == "Example Cafe"
+    assert cp("UPIM/NATIONAL STOCK EXCHANGE OF INDIA/000000000011") == "National Stock Exchange Of India"
+    assert cp("Cash Deposit by example at Example Branch") == "Example"
     assert cp("CASHBACK EARNED") == ""
 
 
@@ -203,7 +203,7 @@ def test_slice_shapes():
     text = ("Opening balance Total credits Interest earned Total debits Closing balance\n+ + - =\n"
             "₹3,317.18 ₹11,31,983.78 ₹548.06 ₹11,35,845.33 ₹3.69\n")
     assert summary_balances(text) == (331718, 369)
-    assert cp("UPI Credit-Avuthu Saritha-9490590309@slc-NESF0000333-609218200403-Payment from slice") == "Avuthu Saritha"
-    assert cp("UPI-Credit-631113177834-MR MUSKU ABHINAY RED-NESF0000333-XXXXXX7418@slc-Payment") == "Mr Musku Abhinay Red"
-    assert cp("UPI Debit-AVUTHU KUSHWANT KUMA-94902481 60@slc-609293538628-self transfer") == "Avuthu Kushwant Kuma"
-    assert cp("UPI-RAHUL SHARMA-rahul@okhdfc-HDFC0001-412345678901-dinner") == "Rahul Sharma"
+    assert cp("UPI Credit-Example Person-example@slc-TEST0000001-000000000007-Payment from slice") == "Example Person"
+    assert cp("UPI-Credit-000000000008-MR SAMPLE PERSON-TEST0000002-XXXXXX0000@slc-Payment") == "Mr Sample Person"
+    assert cp("UPI Debit-EXAMPLE PERSON-example@slc-TEST0000003-000000000009-self transfer") == "Example Person"
+    assert cp("UPI-EXAMPLE PERSON-example@okhdfc-HDFC0001-000000000010-dinner") == "Example Person"

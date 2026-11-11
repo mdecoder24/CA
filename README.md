@@ -1,6 +1,6 @@
 # FinTrack
 
-FinTrack is a personal finance and tax-preparation tool for one person in India. It runs only on your own computer. Your bank data is never sent anywhere.
+FinTrack is a personal finance and tax-preparation tool for one person in India. It runs only on your own computer. Your bank data is never sent anywhere. Each person's local installation stores its own transactions and statements in its own `data/` directory.
 
 You add your bank accounts (Kotak, HDFC, ICICI, SBI, Axis and others), upload their statements, and FinTrack does four things:
 
@@ -175,6 +175,8 @@ FINTRACK_DATA_DIR="$HOME/Documents/FinTrackData" ./dev.sh
 
 Security notes:
 
+- FinTrack is a **single-user local app**, not a shared multi-user service. Anyone who wants to use it should run their own copy on their own computer; that copy saves their data locally and does not expose it to other copies.
+- Do not publicly host or share one running FinTrack instance. It has no user accounts or per-user data separation, so users of the same instance would see the same data.
 - Turn on **FileVault** (System Settings → Privacy & Security). The data is not encrypted on disk without it. `dev.sh` warns you if it is off.
 - The backend listens only on `127.0.0.1`. Other computers on your network cannot reach it.
 - Every write request must carry the `X-FinTrack` header. This blocks cross-site requests from other websites.

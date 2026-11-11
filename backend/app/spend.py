@@ -61,7 +61,7 @@ _HONORIFIC = re.compile(r"^(mr|mrs|ms|miss|dr|m/s)\.?\s+", re.I)
 
 def person_key(name: str) -> str:
     """Loose grouping key for one person whose name the bank truncates differently
-    ('Mr Hrishik', 'Hrishikesh Redd' -> 'hrishi')."""
+    ('Mr Exampl', 'Example Redd' -> 'exampl')."""
     n = _HONORIFIC.sub("", name.strip()).lower()
     first = re.sub(r"[^a-z]", "", n.split(" ")[0]) if n else ""
     return first[:6] if len(first) >= 4 else ""

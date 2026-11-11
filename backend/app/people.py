@@ -1,8 +1,8 @@
 """Tracked people: separate ledgers for people money goes back and forth with.
 
 A person is matched by a case-insensitive regular expression against the
-original bank narration (e.g. ``hrishi`` matches "Mr Hrishik",
-"Hrishikesh Redd" and "SentIMPS…Hrishikesh/…"). The first matching person
+original bank narration (e.g. ``exampl`` matches "Mr Exampl",
+"Example Redd" and "SentIMPS…Example/…"). The first matching person
 wins, in creation order. Raw transactions are never modified.
 """
 

