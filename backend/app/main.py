@@ -163,6 +163,19 @@ def delete_account(account_id: int, s: Session = Depends(get_session)):
     return {"ok": True}
 
 
+@app.get("/api/accounts/{account_id}/coverage")
+def account_coverage(account_id: int, fy: str, s: Session = Depends(get_session)):
+    from .coverage import month_coverage
+
+    if s.get(Account, account_id) is None:
+        raise HTTPException(404, "Account not found")
+    try:
+        fy_range(fy)
+    except (ValueError, IndexError):
+        raise HTTPException(400, "fy must look like 2026-27")
+    return month_coverage(s, account_id, fy)
+
+
 @app.post("/api/accounts/match-transfers")
 def rematch_transfers(s: Session = Depends(get_session)):
     n = match_own_transfers(s)
@@ -203,7 +216,7 @@ async def upload(file: UploadFile = File(...), account_id: int = Form(1), passwo
             raise HTTPException(422, {"code": e.code, "message": str(e), **e.detail})
         except StatementError as e:
             raise HTTPException(422, {"code": "parse_error", "message": str(e)})
-    return {"batch": res.batch, "inserted": res.inserted, "duplicates": res.duplicates}
+    return {"batch": res.batch, "inserted": res.inserted, "duplicates": res.duplicates, "continuity": res.continuity}
 
 
 @app.post("/api/imports/{batch_id}/recheck")

@@ -121,6 +121,19 @@ def _find_header(grid: list[list[str]]) -> tuple[int, dict[str, int]]:
     raise StatementError("Could not find the transaction table header (Date / Description / Amount columns).")
 
 
+_D = r"\d{1,2}[-/ .](?:[A-Za-z]{3,9}|\d{1,2})[-/ .,]*\d{2,4}"
+PERIOD_RE = re.compile(rf"({_D})\s*(?:-|–|to|TO|To)\s*:?\s*({_D})")
+
+
+def find_period(text: str):
+    """First 'date - date' / 'date to date' pair near the top of the statement."""
+    for m in PERIOD_RE.finditer(text[:4000]):
+        a, b = parse_date(m.group(1).replace(",", " ")), parse_date(m.group(2).replace(",", " "))
+        if a and b and a <= b and (b - a).days <= 400:
+            return a, b
+    return None, None
+
+
 OPENING_RE = re.compile(r"opening\s+balance[^\d\-]*(-?[\d,]+\.\d{2})\s*(cr|dr)?", re.I)
 CLOSING_RE = re.compile(r"closing\s+balance[^\d\-]*(-?[\d,]+\.\d{2})\s*(cr|dr)?", re.I)
 SUMMARY_RE = re.compile(
@@ -251,7 +264,9 @@ def _grid_to_statement(grid: list[list[str]], full_text: str) -> ParsedStatement
     if acct:
         digits = re.sub(r"\D", "", acct.group(1))
         masked = f"XXXX{digits[-4:]}" if digits else ""
-    return ParsedStatement(rows=rows, opening_balance=opening, closing_balance=closing, masked_account=masked)
+    p_from, p_to = find_period(full_text)
+    return ParsedStatement(rows=rows, opening_balance=opening, closing_balance=closing, masked_account=masked,
+                           stmt_from=p_from, stmt_to=p_to)
 
 
 def _read_csv(data: bytes) -> list[list[str]]:

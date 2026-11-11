@@ -84,11 +84,11 @@ export default function ImportsPage() {
                 <span className="block truncate text-[14px] font-semibold">{a.nickname}</span>
                 <span className="text-ink-3 block truncate text-[12px]">
                   {a.bank_name}
-                  {a.masked_number && ` · ${a.masked_number}`}
+                  {a.masked_number && ` · ••${a.masked_number.slice(-4)}`}
                 </span>
-                <span className="mt-2 flex items-baseline justify-between gap-2">
-                  <span className="num text-[15px] font-semibold">{a.balance !== null ? paise(a.balance, true) : "—"}</span>
-                  <span className="text-ink-3 text-[11.5px]">{a.txn_count ? `${a.txn_count} txns · to ${fmtDate(a.last_date)}` : "No statements yet"}</span>
+                <span className="num mt-2 block text-[16px] font-semibold">{a.balance !== null ? paise(a.balance, true) : "—"}</span>
+                <span className="text-ink-3 block text-[11.5px]">
+                  {a.txn_count ? `${a.txn_count} transactions · up to ${fmtDate(a.last_date)}` : "No statements yet"}
                 </span>
               </span>
             </button>

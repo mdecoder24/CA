@@ -241,3 +241,17 @@ export type Account = {
   last_date: string | null;
   balance: number | null;
 };
+
+export type MonthCoverage = {
+  month: string;
+  from: string;
+  to: string;
+  txn_count: number;
+  status: "full" | "partial" | "missing" | "upcoming";
+  covered_days: number;
+  expected_days: number;
+  missing: { from: string; to: string }[];
+  covered_until?: string | null;
+  in_progress?: boolean;
+};
+export type Continuity = { ok: boolean; checked: boolean; message: string };

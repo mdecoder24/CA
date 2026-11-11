@@ -57,6 +57,9 @@ def recheck_batch(s: Session, batch_id: int, password: Optional[str] = None) -> 
             # Keep the old reason visible in the audit log; the override is no longer needed.
             batch.override_reason = ""
     batch.reconcile_detail = rec.detail
+    p_from, p_to = st.period
+    if p_from and p_to:
+        batch.period_from, batch.period_to = p_from, p_to
     if st.closing_balance is not None:
         batch.closing_balance = st.closing_balance
     s.add(batch)
@@ -68,11 +71,32 @@ def recheck_batch(s: Session, batch_id: int, password: Optional[str] = None) -> 
     return batch
 
 
+def continuity(s: Session, account_id: int, first_date, opening: Optional[int], exclude_batch: Optional[int] = None) -> dict:
+    """Does this statement's opening balance continue from the last stored balance before it?"""
+    if opening is None or first_date is None:
+        return {"ok": True, "checked": False, "message": "Opening balance not found; continuity not checked."}
+    q = (select(RawTransaction).where(RawTransaction.account_id == account_id, RawTransaction.txn_date < first_date,
+                                      RawTransaction.balance.is_not(None))
+         .order_by(RawTransaction.txn_date.desc(), RawTransaction.import_batch_id.desc(), RawTransaction.row_index.desc()))
+    if exclude_batch is not None:
+        q = q.where(RawTransaction.import_batch_id != exclude_batch)
+    prev = s.exec(q).first()
+    if prev is None:
+        return {"ok": True, "checked": False, "message": "First statement for this account."}
+    if prev.balance == opening:
+        return {"ok": True, "checked": True, "message": f"Continues exactly from {prev.txn_date:%d-%m-%Y}."}
+    return {"ok": False, "checked": True,
+            "message": (f"Opening balance ₹{opening / 100:,.2f} does not match the stored balance ₹{prev.balance / 100:,.2f} "
+                        f"on {prev.txn_date:%d-%m-%Y}. Transactions between the two statements may be missing — "
+                        "import the statement that covers that gap.")}
+
+
 @dataclass
 class ImportOutcome:
     batch: ImportBatch
     inserted: int
     duplicates: int
+    continuity: dict
 
 
 def import_statement(s: Session, account_id: int, filename: str, tmp_path: Path,
@@ -117,12 +141,16 @@ def import_statement(s: Session, account_id: int, filename: str, tmp_path: Path,
     shutil.copyfile(tmp_path, dest)
 
     p_from, p_to = st.period
+    first_row_date = rec.rows[0].txn_date if rec.rows else p_from
+    cont = continuity(s, account_id, first_row_date, rec.opening)
     batch = ImportBatch(account_id=account_id, filename=Path(filename).name[:200], sha256=sha, stored_path=str(dest),
                         file_type=ext, period_from=p_from, period_to=p_to, opening_balance=rec.opening,
                         closing_balance=st.closing_balance if st.closing_balance is not None else
                         (rec.rows[-1].balance if rec.rows else None),
                         rows_parsed=len(rec.rows), status=status, reconcile_detail=rec.detail,
                         override_reason=override_reason.strip() if rec.status == "failed" else "")
+    if not cont["ok"]:
+        batch.reconcile_detail = f"{rec.detail} Continuity: {cont['message']}"
     s.add(batch)
     s.flush()
 
@@ -162,4 +190,4 @@ def import_statement(s: Session, account_id: int, filename: str, tmp_path: Path,
     match_own_transfers(s, account.profile_id)
     run_flags(s)
     s.refresh(batch)
-    return ImportOutcome(batch=batch, inserted=len(new_txs), duplicates=dupes)
+    return ImportOutcome(batch=batch, inserted=len(new_txs), duplicates=dupes, continuity=cont)

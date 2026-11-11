@@ -35,13 +35,20 @@ class ParsedStatement:
     closing_balance: Optional[int] = None
     masked_account: str = ""
     notes: list[str] = field(default_factory=list)
+    # Period printed on the statement ("01 Apr 2026 - 10 Nov 2026"), if found.
+    stmt_from: Optional[date] = None
+    stmt_to: Optional[date] = None
 
     @property
     def period(self) -> tuple[Optional[date], Optional[date]]:
         if not self.rows:
-            return None, None
+            return self.stmt_from, self.stmt_to
         dates = [r.txn_date for r in self.rows]
-        return min(dates), max(dates)
+        lo, hi = min(dates), max(dates)
+        # Use the printed period only when it actually contains every transaction.
+        if self.stmt_from and self.stmt_to and self.stmt_from <= lo and hi <= self.stmt_to:
+            return self.stmt_from, self.stmt_to
+        return lo, hi
 
 
 class BankParser(Protocol):

@@ -2,7 +2,7 @@
 
 FinTrack is a personal finance and tax-preparation tool for one person in India. It runs only on your own computer. Your bank data is never sent anywhere.
 
-You upload Kotak bank statements, and FinTrack does four things:
+You add your bank accounts (Kotak, HDFC, ICICI, SBI, Axis and others), upload their statements, and FinTrack does four things:
 
 1. **Explains every credit and debit.** Rules and an optional local AI suggest a category. You confirm each one in the Review screen. Unusual items are flagged: large credits, cash deposits, repeated round amounts, and duplicate bank references.
 2. **Analyses your spending.** It shows where the money went, which payees you paid most, what was only moved between your own accounts, and a spending risk score from 0 to 100 with the reasons behind it. A snapshot appears right after each upload.
@@ -58,8 +58,14 @@ pkill -f "uvicorn app.main:app"; pkill -f "next dev --hostname 127.0.0.1"
 
 Work through these screens in order.
 
-### Imports
-Upload a Kotak statement: CSV, XLS, XLSX or PDF.
+### Bank accounts & imports
+Each bank account has its own section.
+
+- **Add bank account:** choose the bank from the list, give the account a name (for example "HDFC Salary"), and enter the last 4 digits of the account number. Only those 4 digits are stored.
+- **Upload into a section:** click an account card, then upload its statement: CSV, XLS, XLSX or PDF. Each account keeps its own import history.
+- **Wrong-account guard:** if the statement's account number ends in different digits from the chosen account, the upload stops. You can switch to the right account or, if you are sure, import anyway.
+- **Transfers between your own accounts:** a debit in one account and the same amount credited to another within 3 days is suggested as "Transfer – own account" on both sides, so it is not counted as spending or income. Use **Find transfers between my accounts** to re-run this after importing older statements.
+- **Edit account** changes its name, bank or last 4 digits. An account can be removed only while it has no statements.
 
 - **PDF password:** if the PDF is locked, a password box appears. The password is used once to open the file and is never saved or logged.
 - **Reconciliation:** every row is checked. Previous balance + credit − debit must equal the printed balance. Each import shows one of these statuses:
@@ -70,6 +76,11 @@ Upload a Kotak statement: CSV, XLS, XLSX or PDF.
 - **Re-check:** for any override or unverifiable import, the Re-check button re-reads the stored file with the current parser. Use it after the parser has been fixed.
 - **Duplicates:** the same file cannot be imported twice. Overlapping statements are fine, because rows already imported are skipped.
 - **Spend summary:** right after an upload, a panel shows where the money went and the risk score for that statement. Any past import can be reopened with **Spend summary**.
+
+### Bank account dropdown
+The sidebar has a **Bank account** dropdown under the financial year: **All accounts** or any single account. Dashboard, Spend, Review, Transactions and People all follow it. With All accounts selected, each transaction shows which account it belongs to, and the closing balance is the sum of every account's latest balance.
+
+The **Tax estimate** and the **CA pack** always cover all accounts, because tax is worked out per person, not per account. The CA pack's transaction sheet has an Account column.
 
 ### Spend
 Full spend analysis for the financial year:
@@ -208,15 +219,15 @@ To reset everything and start empty, stop the app and delete the `data/` folder.
   - senior-citizen slabs
   - house-property income other than home-loan interest
 - **The spending risk score is a heuristic.** It reads patterns in the data. It does not know your goals, your obligations outside this account, or cash you spend without this account.
-- **Only Kotak is supported.** The parser was tested on one real Kotak PDF statement and on synthetic CSV and Excel files. Other Kotak layouts may need adjustment.
-- **Phase 2, not built yet:** AIS and Form 26AS reconciliation, broker P&L import, document vault, business/LLP profile, and banks other than Kotak.
+- **Bank formats:** one parser handles every bank by finding columns by name (Date / Narration or Description / Withdrawal / Deposit / Balance). It was tested on one real Kotak PDF and on synthetic Kotak and HDFC files. A real HDFC, ICICI, SBI or Axis statement may need small adjustments; if one fails, try the Excel or CSV download.
+- **Phase 2, not built yet:** AIS and Form 26AS reconciliation, broker P&L import, document vault, and a business/LLP profile.
 
 ---
 
 ## 8. Development
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q        # backend tests (34)
+cd backend && .venv/bin/python -m pytest -q        # backend tests (38)
 cd frontend && pnpm exec tsc --noEmit && pnpm exec eslint src
 cd frontend && pnpm exec next build                # production build check
 ```
@@ -226,7 +237,9 @@ Project layout:
 ```
 dev.sh                  start script
 backend/app/            FastAPI app
-  importers/            bank parsers (kotak.py) and balance reconciliation
+  banks.py              supported banks and parser selection
+  importers/            statement parser (header-based, all banks) and balance reconciliation
+  transfers.py          matching transfers between your own accounts
   tax/engine.py         tax computation
   tax/rules/*.yaml      tax rules per financial year
   classify.py           rules engine, counterparty extraction, local AI
