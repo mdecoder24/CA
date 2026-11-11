@@ -32,8 +32,9 @@ def run_flags(s: Session) -> int:
     want: dict[tuple[int, str], str] = {}
 
     for tx, _c, cat in rows:
-        if tx.credit >= large and not (cat and cat.treatment == "salary"):
-            want[(tx.id, "large_credit")] = f"Large credit of {_inr(tx.credit)} not classified as salary."
+        # Salary, redemptions, own transfers, loans and broker payouts are expected large credits.
+        if tx.credit >= large and not (cat and cat.treatment in ("salary", "not_income", "trading_capital")):
+            want[(tx.id, "large_credit")] = f"{_inr(tx.credit)} in one credit. Say where it came from."
         if tx.credit and (CASH_RE.search(tx.raw_description) or (cat and cat.name.startswith("Cash deposit"))):
             want[(tx.id, "cash_deposit")] = f"Cash deposit of {_inr(tx.credit)}. Keep proof of the cash source."
 
@@ -52,9 +53,10 @@ def run_flags(s: Session) -> int:
                     f"Bank reference {t.ref_no} appears {len(txs)} times on {t.txn_date:%d-%m-%Y} for the same amount.")
 
     repeats = defaultdict(list)
-    for tx, c, _ in rows:
+    for tx, c, cat in rows:
         cp = c.counterparty if c else ""
-        if tx.credit and cp and tx.credit % unit == 0:
+        expected = cat is not None and cat.treatment in ("salary", "not_income", "trading_capital")
+        if tx.credit and cp and tx.credit % unit == 0 and not expected:
             repeats[(fy_of(tx.txn_date), cp.lower(), tx.credit)].append(tx)
     for (fy, cp, amt), txs in repeats.items():
         if len(txs) >= repeat_min:

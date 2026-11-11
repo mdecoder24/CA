@@ -135,7 +135,7 @@ export default function DashboardPage() {
               {d.credit_categories.map((c) => (
                 <tr key={c.category}>
                   <td>{c.category}</td>
-                  <td className="num text-right">{paise(c.amount)}</td>
+                  <td className="num text-right">{paise(c.amount, true)}</td>
                 </tr>
               ))}
             </tbody>

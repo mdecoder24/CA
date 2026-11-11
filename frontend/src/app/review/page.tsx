@@ -79,7 +79,7 @@ export default function ReviewPage() {
               {aiBusy ? "Asking local AI…" : "Suggest with local AI"}
             </button>
             <button className="btn" onClick={confirmAllSuggested} disabled={!suggestedCount}>
-              Confirm {suggestedCount} unflagged suggestions
+              {suggestedCount ? `Confirm ${suggestedCount} unflagged suggestions` : "No unflagged suggestions"}
             </button>
           </>
         }
@@ -208,12 +208,12 @@ function ReviewCard({
       {openFlags.length > 0 && (
         <ul className="mt-3 space-y-2">
           {openFlags.map((f) => (
-            <li key={f.id} className="bg-warn-soft rounded-lg px-3 py-2">
-              <div className="text-warn text-[12.5px] font-semibold">{FLAG_LABEL[f.type] ?? f.type}</div>
-              <div className="text-[12.5px]">{f.detail}</div>
+            <li key={f.id} className="bg-surface-2 border-warn rounded-r-lg border-l-2 px-3 py-2">
+              <div className="text-warn text-[12px] font-semibold">{FLAG_LABEL[f.type] ?? f.type}</div>
+              <div className="text-ink-2 text-[12.5px]">{f.detail}</div>
               <input
                 className="input mt-1.5 h-8 w-full"
-                placeholder="Explain (e.g. Sold old car to Ramesh, agreement in folder). Saving resolves the flag."
+                placeholder="Explain where this came from (optional)"
                 value={flagNotes[f.id] ?? ""}
                 onChange={(e) => setFlagNotes({ ...flagNotes, [f.id]: e.target.value })}
               />

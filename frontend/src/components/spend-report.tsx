@@ -126,7 +126,8 @@ export function CategoryBars({ d, limit = 12 }: { d: Spend; limit?: number }) {
             <div className="flex items-baseline justify-between gap-3 text-[13px]">
               <span className={`truncate ${unc ? "text-ink-2 italic" : ""}`}>{c.category}</span>
               <span className="num shrink-0">
-                {paise(c.amount, true)} <span className="text-ink-3 text-[11.5px]">{(c.share * 100).toFixed(0)}%</span>
+                {paise(c.amount, true)}{" "}
+                <span className="text-ink-3 text-[11.5px]">{c.share < 0.005 ? "<1%" : `${(c.share * 100).toFixed(0)}%`}</span>
               </span>
             </div>
             <div className="bg-surface-2 mt-1 h-2 overflow-hidden rounded-full">

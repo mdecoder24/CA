@@ -191,7 +191,7 @@ function TaxForm({ fy, initial }: { fy: string; initial: { inputs: Inputs; estim
           <div className="grid grid-cols-2 gap-3">
             {(["new", "old"] as const).map((k) => {
               const r = est.regimes[k];
-              const best = est.recommended === k;
+              const best = est.recommended === k && n.liability !== o.liability;
               return (
                 <div key={k} className={`card p-4 ${best ? "ring-accent ring-2" : ""}`}>
                   <div className="text-ink-3 text-[12px] font-medium">{r.name}</div>
@@ -200,6 +200,7 @@ function TaxForm({ fy, initial }: { fy: string; initial: { inputs: Inputs; estim
                     {r.balance > 0 ? `${rupees(r.balance)} still to pay` : r.balance < 0 ? `${rupees(-r.balance)} refund` : "Nothing due"}
                   </div>
                   {best && <span className="chip chip-ok mt-2">Lower tax</span>}
+                  {!best && k === "new" && n.liability === o.liability && <span className="chip mt-2">Same tax in both</span>}
                 </div>
               );
             })}
