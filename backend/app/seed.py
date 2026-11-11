@@ -69,6 +69,27 @@ BUILTIN_RULES = [
     (r"mutual\s*fund|\bmf\b|\bsip\b|bse\s*star|cams|kfin|nps", "regex", "debit", "Investments (MF / FD / other)", False, 80),
 ]
 
+# Additions applied once to existing databases (tracked by the "seed_version" setting),
+# so rules the user deleted are not resurrected on every start.
+SEED_V2_CATEGORIES = [
+    ("Investment / FD redemption", "credit", "not_income"),
+    ("Credit card bill", "debit", "expense"),
+]
+SEED_V2_RULES = [
+    (r"sweep\s*(transfer|trf)\s*from|fd\s*premat|td\s*premat|redemption|redeem", "regex", "credit",
+     "Investment / FD redemption", False, 12),
+    (r"upi_cradj|\bcr\s*adj", "regex", "credit", "Refund / Reversal", False, 40),
+    (r"sweep\s*(transfer|trf)\s*to", "regex", "debit", "Investments (MF / FD / other)", True, 12),
+    (r"groww\s*invest|nach-mut|indian\s*clearing\s*corp|national\s*stock\s*exchange", "regex", "debit",
+     "Investments (MF / FD / other)", False, 25),
+    (r"bill\s*paid\s*to\s*credit\s*card|visaccpay|credit\s*card\s*(bill|payment)", "regex", "debit",
+     "Credit card bill", True, 45),
+    (r"^at[lw]/", "regex", "debit", "Cash withdrawal", True, 50),
+    (r"program\s*fee|card\s*fee", "regex", "debit", "Bank charges", False, 72),
+    (r"^pcd/", "regex", "debit", "Shopping", False, 85),
+]
+SEED_VERSION = 2
+
 DEFAULT_SETTINGS = {
     "anomaly": {"large_credit_paise": 50_000_00, "round_repeat_min": 3, "round_unit_paise": 1_000_00},
     "ollama": {"enabled": False, "url": "http://127.0.0.1:11434", "model": "qwen2.5:7b"},
@@ -100,5 +121,23 @@ def seed(s: Session) -> None:
     for key, value in DEFAULT_SETTINGS.items():
         if s.get(Setting, key) is None:
             s.add(Setting(key=key, value=value))
+    s.commit()
 
+    ver = s.get(Setting, "seed_version")
+    current = (ver.value or {}).get("v", 1) if ver else 1
+    if current < 2:
+        existing = {(c.name, c.direction) for c in s.exec(select(Category))}
+        for name, direction, treatment in SEED_V2_CATEGORIES:
+            if (name, direction) not in existing:
+                s.add(Category(profile_id=profile.id, name=name, direction=direction, treatment=treatment, sort=500))
+        s.commit()
+        cats = {(c.name, c.direction): c.id for c in s.exec(select(Category))}
+        for pattern, mtype, direction, cat, auto, prio in SEED_V2_RULES:
+            s.add(Rule(profile_id=profile.id, priority=prio, match_type=mtype, pattern=pattern,
+                       direction=direction, category_id=cats[(cat, direction)], auto_confirm=auto, builtin=True))
+    if ver is None:
+        s.add(Setting(key="seed_version", value={"v": SEED_VERSION}))
+    else:
+        ver.value = {"v": SEED_VERSION}
+        s.add(ver)
     s.commit()

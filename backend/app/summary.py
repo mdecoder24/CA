@@ -55,7 +55,8 @@ def tax_estimate(s: Session, fy: str, profile_id: int = 1) -> dict:
 def coverage_gaps(s: Session, fy: str) -> list[dict]:
     """Date ranges inside the FY (up to today) not covered by any successful import."""
     start, end = fy_range(fy)
-    end = min(end, date.today())
+    # A statement downloaded today normally ends yesterday, so today is not a gap.
+    end = min(end, date.fromordinal(date.today().toordinal() - 1))
     if end < start:
         return []
     batches = s.exec(select(ImportBatch).where(ImportBatch.period_from.is_not(None))).all()

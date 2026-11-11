@@ -178,6 +178,22 @@ export default function ImportsPage() {
                       {s.text}
                     </span>
                     {b.override_reason && <div className="text-ink-2 mt-1 max-w-56 text-[12px]">“{b.override_reason}”</div>}
+                    {(b.status === "override" || b.status === "unchecked") && (
+                      <button
+                        className="btn btn-sm mt-1.5"
+                        onClick={async () => {
+                          try {
+                            const r = await api.upload<ImportBatch>(`/api/imports/${b.id}/recheck`, new FormData());
+                            toast(r.status === "override" ? "Still does not reconcile." : "Re-checked: statement reconciles.");
+                            bump();
+                          } catch (e) {
+                            toast((e as Error).message, "error");
+                          }
+                        }}
+                      >
+                        Re-check
+                      </button>
+                    )}
                   </td>
                   <td className="num text-ink-2">{new Date(b.created_at).toLocaleDateString("en-IN")}</td>
                 </tr>

@@ -123,6 +123,8 @@ def _find_header(grid: list[list[str]]) -> tuple[int, dict[str, int]]:
 
 OPENING_RE = re.compile(r"opening\s+balance[^\d\-]*(-?[\d,]+\.\d{2})\s*(cr|dr)?", re.I)
 CLOSING_RE = re.compile(r"closing\s+balance[^\d\-]*(-?[\d,]+\.\d{2})\s*(cr|dr)?", re.I)
+SUMMARY_RE = re.compile(
+    r"opening\s+balance\s+closing\s+balance[^\n]*\n[^\n]*?(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})", re.I)
 ACCOUNT_RE = re.compile(r"(?:account\s*(?:no|number)|a/c\s*no)\.?\s*[:\-]?\s*([X\d*]{4,})", re.I)
 
 
@@ -232,9 +234,18 @@ def _grid_to_statement(grid: list[list[str]], full_text: str) -> ParsedStatement
     if rows[0].txn_date > rows[-1].txn_date:
         rows.reverse()
 
-    if opening is None:
-        opening = _balance_from_match(OPENING_RE.search(full_text))
-    closing = _balance_from_match(CLOSING_RE.search(full_text))
+    # Kotak e-statements end with a summary table whose header row is
+    # "Opening Balance  Closing Balance" and whose values sit on the next line.
+    # Reading "first number after 'Closing Balance'" would pick the opening value.
+    summary = SUMMARY_RE.search(full_text)
+    if summary:
+        if opening is None:
+            opening, _ = parse_amount(summary.group(1))
+        closing, _ = parse_amount(summary.group(2))
+    else:
+        if opening is None:
+            opening = _balance_from_match(OPENING_RE.search(full_text))
+        closing = _balance_from_match(CLOSING_RE.search(full_text))
     acct = ACCOUNT_RE.search(full_text)
     masked = ""
     if acct:

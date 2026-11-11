@@ -15,17 +15,27 @@ from sqlmodel import Session, select
 from .models import Category, Classification, ClassificationHistory, RawTransaction, Rule, Setting, now
 
 
+# Kotak narration shapes, most specific first. Group 1 is the counterparty name.
+_CP_PATTERNS = [
+    re.compile(r"(?i)^recd:\s*(?:imps|neft|rtgs)/\d+/([^/]+)/"),            # Recd:IMPS/<ref>/<name>/<bank>/
+    re.compile(r"(?i)^sentimps\d{6,}([^/]+)/"),                             # SentIMPS<ref><name>/<ifsc>/
+    re.compile(r"(?i)^mb:\s*811\s*sent\s+(?:ft|neft|imps)\s+([a-z .]+?)\s+\d"),  # MB:811SENT FT <NAME> <acct>
+    re.compile(r"(?i)^(?:neft|rtgs)\s+[a-z]{4}[a-z0-9]*\d{6,}\s+(.+)$"),    # NEFT <UTR> <NAME ...>
+    re.compile(r"(?i)^upim?/([^/]+)/"),                                     # UPI/<name>/<ref>/<note>
+    re.compile(r"(?i)^(?:imps|neft|rtgs|ib|mb)[\s/\-:]+(?:(?:cr|dr|p2a|p2m|in|out)[\s/\-:]+)?([^/\-:]+)"),
+    re.compile(r"(?i)^cash\s+deposit\s+by\s+([a-z .]+?)\s+at\b"),           # Cash Deposit by <name> at <place>
+]
+
+
 def extract_counterparty(desc: str) -> str:
-    d = desc.strip()
-    # UPI/NAME/REF/NOTE  or  UPI-NAME-VPA-REF
-    m = re.match(r"(?i)^(?:upi|imps|neft|rtgs|ib|mb)[\s/\-:]+(?:(?:cr|dr|p2a|p2m|in|out)[\s/\-:]+)?([^/\-:]+)", d)
-    if m:
-        name = re.sub(r"\d{6,}", "", m.group(1)).strip(" .")
-        if name:
-            return name.title()[:60]
-    m = re.search(r"(?i)\b(?:from|to|by|trf)\s+([a-z][a-z .&]{2,40})", d)
-    if m:
-        return m.group(1).strip(" .").title()[:60]
+    d = re.sub(r"\s+", " ", desc.strip())
+    for pat in _CP_PATTERNS:
+        m = pat.search(d)
+        if m:
+            name = re.sub(r"\d{6,}", "", m.group(1))
+            name = re.sub(r"\s+", " ", name).strip(" ./-")
+            if len(name) >= 2 and not name.isdigit():
+                return name.title()[:60]
     return ""
 
 
@@ -64,6 +74,12 @@ def apply_rules(s: Session, txs: Iterable[RawTransaction], profile_id: int, only
             c = Classification(raw_transaction_id=tx.id, counterparty=extract_counterparty(tx.raw_description))
         if only_unconfirmed and c.status == "confirmed":
             continue
+        if c.status != "confirmed":
+            # Counterparty is derived data; refresh it when the extractor improves.
+            cp = extract_counterparty(tx.raw_description)
+            if cp != c.counterparty:
+                c.counterparty = cp
+                s.add(c)
         hit = next((r for r in rules if _rule_matches(r, tx, c.counterparty)), None)
         if hit is None:
             if c.id is None:

@@ -144,3 +144,47 @@ def test_password_pdf(client, tmp_path):
     r = _upload(client, "locked.pdf", p.read_bytes(), password="secret1")
     assert r.status_code == 200, r.text
     assert r.json()["inserted"] == 2
+
+
+def test_kotak_summary_table_closing_balance(tmp_path):
+    """Kotak e-statement summary: header row then values row; closing is the 2nd number."""
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Table
+
+    p = tmp_path / "s.pdf"
+    doc = SimpleDocTemplate(str(p))
+    st = getSampleStyleSheet()["BodyText"]
+    data = [["#", "Date", "Description", "Chq/Ref. No.", "Withdrawal (Dr.)", "Deposit (Cr.)", "Balance"],
+            ["-", "-", "Opening Balance", "-", "-", "-", "6,923.82"],
+            ["1", "01 Apr 2026", "UPI/SHOP/1/x", "UPI-1", "1,423.82", "", "5,500.00"]]
+    doc.build([Table(data), Paragraph("Account Summary", st),
+               Table([["Particulars", "Opening Balance", "Closing Balance"],
+                      ["Savings Account (SA):", "6,923.82", "5,500.00"]], colWidths=[150, 150, 150])])
+    parsed = KotakParser().parse(p, "pdf")
+    assert parsed.opening_balance == 692382
+    assert parsed.closing_balance == 550000
+    assert reconcile(parsed).status == "ok"
+
+
+def test_counterparty_kotak_shapes():
+    from app.classify import extract_counterparty as cp
+
+    assert cp("Recd:IMPS/609812695897/Nandanavan/KKBK/ X8303/Bill") == "Nandanavan"
+    assert cp("SentIMPS613809205786Chaitanya /HDFCX9403/V") == "Chaitanya"
+    assert cp("MB:811SENT FT HRISHIKESH 8143581810 KOTAK") == "Hrishikesh"
+    assert cp("NEFT HDFCH00995043028 HDFC MUTUAL FUND REDEMPTION") == "Hdfc Mutual Fund Redemption"
+    assert cp("RTGS UTIBR72026091100099294 PAYU PAYMENTS PVT L") == "Payu Payments Pvt L"
+    assert cp("UPI/SAGAR FOOD COUR/645749021858/Pay To SAGAR FO") == "Sagar Food Cour"
+    assert cp("UPIM/NATIONAL STOCK EXCHANGE OF INDIA/663161754741") == "National Stock Exchange Of India"
+    assert cp("Cash Deposit by ramesh at SAROORNAGAR HYDERABAD") == "Ramesh"
+    assert cp("CASHBACK EARNED") == ""
+
+
+def test_same_amount_same_day_different_refs_not_duplicate(client):
+    csv = KOTAK_CSV.replace(
+        '6,30-04-2025,30-04-2025,Int.Pd:01-04-2025 to 30-04-2025,,312.00,CR,"1,59,862.00",CR\n',
+        '6,30-04-2025,30-04-2025,UPI/HARI/1/x,UPI-A,900.00,DR,"1,58,650.00",CR\n'
+        '7,30-04-2025,30-04-2025,UPI/HARI/2/x,UPI-B,900.00,DR,"1,57,750.00",CR\n')
+    assert _upload(client, "d.csv", csv.encode()).status_code == 200
+    txs = client.get("/api/transactions", params={"fy": "2025-26"}).json()
+    assert not any(f["type"] == "possible_duplicate" for t in txs for f in t["flags"])

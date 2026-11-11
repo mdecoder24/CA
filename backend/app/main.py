@@ -22,7 +22,7 @@ from .anomalies import run_flags
 from .classify import apply_rules, extract_counterparty, llm_suggest, set_classification
 from .db import data_dir, get_session, init_db
 from .importers.base import PasswordRequired, StatementError
-from .ingest import ImportRejected, import_statement
+from .ingest import ImportRejected, import_statement, recheck_batch
 from .models import (Account, AuditLog, Category, Classification, Flag, ImportBatch, RawTransaction, Rule, Setting,
                      TaxInput)
 from .summary import dashboard, fy_rows, tax_estimate
@@ -104,6 +104,16 @@ async def upload(file: UploadFile = File(...), account_id: int = Form(1), passwo
         except StatementError as e:
             raise HTTPException(422, {"code": "parse_error", "message": str(e)})
     return {"batch": res.batch, "inserted": res.inserted, "duplicates": res.duplicates}
+
+
+@app.post("/api/imports/{batch_id}/recheck")
+def recheck_import(batch_id: int, password: str = Form(""), s: Session = Depends(get_session)):
+    try:
+        return recheck_batch(s, batch_id, password=password or None)
+    except PasswordRequired as e:
+        raise HTTPException(422, {"code": "password_required", "message": str(e)})
+    except (ImportRejected, StatementError) as e:
+        raise HTTPException(422, {"code": "recheck_failed", "message": str(e)})
 
 
 # ---------------------------------------------------------------- transactions

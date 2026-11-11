@@ -37,6 +37,36 @@ def fingerprint(account_id: int, r) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def recheck_batch(s: Session, batch_id: int, password: Optional[str] = None) -> ImportBatch:
+    """Re-parse a stored statement and re-run reconciliation (e.g. after a parser fix).
+
+    Only the batch's check result changes. Imported rows are never modified.
+    """
+    batch = s.get(ImportBatch, batch_id)
+    if batch is None:
+        raise ImportRejected("Unknown import.")
+    account = s.get(Account, batch.account_id)
+    st = PARSERS[account.bank].parse(Path(batch.stored_path), batch.file_type, password=password)
+    rec = reconcile(st)
+    before = {"status": batch.status, "reconcile_detail": batch.reconcile_detail,
+              "closing_balance": batch.closing_balance, "override_reason": batch.override_reason}
+    if rec.status != "failed":
+        batch.status = {"ok": "ok", "reordered": "reordered", "totals_only": "ok", "unchecked": "unchecked"}[rec.status]
+        if before["override_reason"]:
+            # Keep the old reason visible in the audit log; the override is no longer needed.
+            batch.override_reason = ""
+    batch.reconcile_detail = rec.detail
+    if st.closing_balance is not None:
+        batch.closing_balance = st.closing_balance
+    s.add(batch)
+    audit(s, "import_batch", batch.id, "recheck", before=before,
+          after={"status": batch.status, "reconcile_detail": batch.reconcile_detail,
+                 "closing_balance": batch.closing_balance, "override_reason": batch.override_reason})
+    s.commit()
+    s.refresh(batch)
+    return batch
+
+
 @dataclass
 class ImportOutcome:
     batch: ImportBatch

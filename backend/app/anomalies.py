@@ -37,15 +37,19 @@ def run_flags(s: Session) -> int:
         if tx.credit and (CASH_RE.search(tx.raw_description) or (cat and cat.name.startswith("Cash deposit"))):
             want[(tx.id, "cash_deposit")] = f"Cash deposit of {_inr(tx.credit)}. Keep proof of the cash source."
 
+    # Two payments of the same amount on the same day with different bank references are
+    # normal (e.g. two ₹900 UPI payments). A real duplicate is the SAME bank reference
+    # appearing twice — e.g. one statement imported as both PDF and Excel.
     groups = defaultdict(list)
-    for tx, c, _ in rows:
-        key = (tx.account_id, tx.txn_date, tx.credit, tx.debit, (c.counterparty if c else "") or tx.raw_description)
-        groups[key].append(tx)
+    for tx, _c, _ in rows:
+        ref = re.sub(r"\s+", "", tx.ref_no or "").upper()
+        if ref and ref not in {"-", "NA", "N/A"}:
+            groups[(tx.account_id, tx.txn_date, tx.credit, tx.debit, ref)].append(tx)
     for txs in groups.values():
-        if len(txs) > 1 and len({t.ref_no for t in txs}) > 1:
+        if len(txs) > 1:
             for t in txs:
                 want[(t.id, "possible_duplicate")] = (
-                    f"{len(txs)} identical-looking entries on {t.txn_date:%d-%m-%Y} with different references.")
+                    f"Bank reference {t.ref_no} appears {len(txs)} times on {t.txn_date:%d-%m-%Y} for the same amount.")
 
     repeats = defaultdict(list)
     for tx, c, _ in rows:
