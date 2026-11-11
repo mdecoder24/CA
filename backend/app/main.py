@@ -25,6 +25,7 @@ from .importers.base import PasswordRequired, StatementError
 from .ingest import ImportRejected, import_statement, recheck_batch
 from .models import (Account, AuditLog, Category, Classification, Flag, ImportBatch, RawTransaction, Rule, Setting,
                      TaxInput)
+from .spend import analyse as spend_analyse
 from .summary import dashboard, fy_rows, tax_estimate
 from .tax import engine
 from .util import audit, fy_of, fy_range
@@ -381,6 +382,23 @@ def ai_suggest(s: Session = Depends(get_session)):
     res = llm_suggest(s, 1)
     run_flags(s)
     return res
+
+
+# ---------------------------------------------------------------- spend
+@app.get("/api/spend")
+def spend(fy: Optional[str] = None, start: Optional[date] = None, end: Optional[date] = None,
+          batch_id: Optional[int] = None, s: Session = Depends(get_session)):
+    """Spend analytics for an FY, an explicit date range, or one imported statement's period."""
+    if batch_id is not None:
+        b = s.get(ImportBatch, batch_id)
+        if b is None or b.period_from is None:
+            raise HTTPException(404, "Import not found")
+        start, end = b.period_from, b.period_to
+    elif fy:
+        start, end = fy_range(fy)
+    if start is None or end is None or start > end:
+        raise HTTPException(400, "Give fy, batch_id, or start and end dates")
+    return spend_analyse(s, start, end)
 
 
 # ---------------------------------------------------------------- tax
