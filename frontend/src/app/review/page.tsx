@@ -208,8 +208,11 @@ function ReviewCard({
       {openFlags.length > 0 && (
         <ul className="mt-3 space-y-2">
           {openFlags.map((f) => (
-            <li key={f.id} className="bg-surface-2 border-warn rounded-r-lg border-l-2 px-3 py-2">
-              <div className="text-warn text-[12px] font-semibold">{FLAG_LABEL[f.type] ?? f.type}</div>
+            <li key={f.id} className="bg-surface-2 rounded-lg px-3 py-2">
+              <div className="text-warn flex items-center gap-1.5 text-[12px] font-semibold">
+                <span className="bg-warn inline-block size-1.5 rounded-full" aria-hidden />
+                {FLAG_LABEL[f.type] ?? f.type}
+              </div>
               <div className="text-ink-2 text-[12.5px]">{f.detail}</div>
               <input
                 className="input mt-1.5 h-8 w-full"
