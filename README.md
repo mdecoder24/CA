@@ -105,9 +105,9 @@ Full spend analysis for the financial year:
 These figures are a reading of your bank data, not financial advice. Most spending is uncategorised until you confirm it in Review, so confirm categories to sharpen the picture.
 
 ### People
-Separate ledgers for people money goes back and forth with, such as Hrishikesh Reddy.
+Separate ledgers for people money goes back and forth with.
 
-- **Track a person:** give a name and the text the bank always prints for them. Banks cut names short ("Mr Hrishik", "Hrishikesh Redd"), so a short first-name fragment such as `hrishi` usually works best. The **Suggested** list shows people who both paid you and were paid by you, and **Track** adds one in a click.
+- **Track a person:** give a name and the text the bank always prints for them. Banks cut names short, so a short name fragment usually works best. The **Suggested** list shows people who both paid you and were paid by you, and **Track** adds one in a click.
 - **Ledger:** shows totals received and sent, the net ("in your favour" or "out of pocket"), a month-by-month chart, and every transaction with a running net.
 - **Say what this money was:** pick one category for all money received and one for all money sent. For example, "Loan repaid to me" and "Loan given / money lent". Every row in that direction is then confirmed.
 - **Kept separate:** tracked people's transactions are excluded from spending and money-in totals on the Spend page, and listed under **Tracked people** instead.
