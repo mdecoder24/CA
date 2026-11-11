@@ -56,6 +56,17 @@ def _inr(p: int) -> str:
     return f"₹{inr(p / 100)}"
 
 
+_HONORIFIC = re.compile(r"^(mr|mrs|ms|miss|dr|m/s)\.?\s+", re.I)
+
+
+def person_key(name: str) -> str:
+    """Loose grouping key for one person whose name the bank truncates differently
+    ('Mr Hrishik', 'Hrishikesh Redd' -> 'hrishi')."""
+    n = _HONORIFIC.sub("", name.strip()).lower()
+    first = re.sub(r"[^a-z]", "", n.split(" ")[0]) if n else ""
+    return first[:6] if len(first) >= 4 else ""
+
+
 def _month_key(d: date) -> str:
     return f"{d.year}-{d.month:02d}"
 
@@ -99,12 +110,26 @@ def analyse(s: Session, start: date, end: date, account_id: Optional[int] = None
     emi_out = 0
     to_broker = from_broker = 0
     credit_by_month: dict[str, int] = defaultdict(int)
+    # Unconfirmed person-to-person flows, grouped loosely by name, for the two-way view.
+    two_way: dict[str, dict] = defaultdict(lambda: {"in": 0, "out": 0, "names": defaultdict(int), "n_in": 0, "n_out": 0})
 
     for tx, c, cat in rows:
         status = c.status if c else "unclassified"
         treatment = cat.treatment if cat else None
         name = cat.name if cat else None
         cp = (c.counterparty if c else "") or ""
+
+        # Only money nobody has explained yet: no category, or explicitly "Unexplained".
+        pk = person_key(cp) if (cp and status != "confirmed" and (cat is None or treatment == "unexplained")) else ""
+        if pk:
+            tw = two_way[pk]
+            tw["names"][cp] += tx.credit or tx.debit
+            if tx.credit:
+                tw["in"] += tx.credit
+                tw["n_in"] += 1
+            else:
+                tw["out"] += tx.debit
+                tw["n_out"] += 1
 
         if tx.credit:
             if treatment == "trading_capital":
@@ -275,8 +300,23 @@ def analyse(s: Session, start: date, end: date, account_id: Optional[int] = None
                       "category": max(v["categories"].items(), key=lambda x: x[1])[0]}
                      for k, v in by_payee.items()), key=lambda x: -x["amount"])[:12]
 
+    flows = []
+    for v in two_way.values():
+        if v["in"] and v["out"]:
+            flows.append({"name": max(v["names"].items(), key=lambda x: x[1])[0],
+                          "aliases": sorted(v["names"], key=lambda k: -v["names"][k])[:4],
+                          "received": v["in"], "sent": v["out"], "net": v["in"] - v["out"],
+                          "count_in": v["n_in"], "count_out": v["n_out"]})
+    flows.sort(key=lambda x: -(x["received"] + x["sent"]))
+    pass_through = sum(min(f["received"], f["sent"]) for f in flows)
+    if pass_through and spend_total and pass_through / spend_total > 0.2:
+        notes.insert(0, f"{_inr(pass_through)} of 'spending' went to people who also sent you money "
+                        "(see Two-way money). If these are loans, splits or your own money moving, "
+                        "categorise them in Review — real spending is likely much lower.")
+
     return {
         "start": start.isoformat(), "end": end.isoformat(), "empty": False,
+        "two_way": flows[:10], "pass_through": pass_through,
         "first_txn": first.isoformat(), "last_txn": last.isoformat(), "months": round(months, 2),
         "spend_total": spend_total, "monthly_avg": int(monthly_spend), "inflow": inflow,
         "uncategorised": uncategorised, "spend_on_suggestion": spend_on_suggestion,

@@ -1,65 +1,226 @@
 # FinTrack
 
-FinTrack is a personal finance and tax-preparation tool for one person in India. It runs only on your own computer, and your bank data never leaves it.
+FinTrack is a personal finance and tax-preparation tool for one person in India. It runs only on your own computer. Your bank data is never sent anywhere.
 
-You upload Kotak statements, and FinTrack does three things:
+You upload Kotak bank statements, and FinTrack does four things:
 
-1. **Explains every credit.** Rules and an optional local AI suggest a category. You confirm each one in the Review screen. Anything unusual is flagged: large credits, cash deposits, possible duplicates, and repeated round amounts.
-2. **Estimates tax** under the old and the new regime, net of TDS and advance tax. It counts **confirmed** income only. Transfers, refunds and trading capital are never counted as income.
-3. **Builds a CA pack:** an Excel workbook plus a PDF summary for your Chartered Accountant.
+1. **Explains every credit and debit.** Rules and an optional local AI suggest a category. You confirm each one in the Review screen. Unusual items are flagged: large credits, cash deposits, repeated round amounts, and duplicate bank references.
+2. **Analyses your spending.** It shows where the money went, which payees you paid most, what was only moved between your own accounts, and a spending risk score from 0 to 100 with the reasons behind it. A snapshot appears right after each upload.
+3. **Estimates tax** under the old and the new regime, net of TDS and advance tax. It counts **confirmed** income only. Transfers, refunds, loans and trading capital are never counted as income.
+4. **Builds a CA pack:** an Excel workbook and a PDF summary for your Chartered Accountant.
 
-Original bank data is stored as it is and is never edited. All classification lives in separate tables.
+Original bank rows are stored exactly as the bank printed them and are never edited. Classification, spend analysis and tax all live in separate tables.
 
-## Start
+---
+
+## 1. Requirements
+
+| Tool | Version | Install (macOS) |
+|---|---|---|
+| Python | 3.11 or newer (3.12 recommended) | `brew install python@3.12` |
+| Node.js | 20 or newer | `brew install node` |
+| pnpm | any recent | `brew install pnpm` or `npm i -g pnpm` |
+| Ollama (optional) | any | https://ollama.com |
+
+FinTrack is free. It uses only open-source software and runs locally.
+
+---
+
+## 2. First-time setup and run
+
+From the project folder:
 
 ```bash
 ./dev.sh
 ```
 
-Then open http://127.0.0.1:3000.
+The first run does the following automatically:
 
-The first run creates the Python environment and installs packages. You need Python 3.11+ (`brew install python@3.12`), Node 20+ and pnpm.
+1. Creates `backend/.venv` and installs the Python packages in `backend/requirements.txt`.
+2. Installs the frontend packages with `pnpm install` in `frontend/`.
+3. Warns you if macOS FileVault is off.
+4. Starts the backend on `http://127.0.0.1:8000` with auto-reload.
+5. Starts the frontend on `http://127.0.0.1:3000`.
 
-## Using it
+Then open **http://127.0.0.1:3000** in your browser.
 
-1. **Imports:** upload a Kotak statement (CSV, XLS, XLSX or PDF). For a password-protected PDF, type the password. It is used once and never saved.
-   - Each row is checked: previous balance + credit − debit must equal the printed balance.
-   - Overlapping statements are fine, because rows already imported are skipped.
-2. **Review:** confirm each credit and add notes for your CA. Tick "Always for …" to turn a decision into a rule. Use `j`/`k` to move between cards and `Enter` to confirm.
-3. **Tax estimate:** enter Form 16 figures, TDS, broker P&L and deductions. The estimate updates as you type.
-4. **CA pack:** download the Excel workbook and the PDF summary.
+If `dev.sh` is not executable, run `chmod +x dev.sh` once.
 
-## Data
+**Stop the app:** press `Ctrl+C` in the terminal where `dev.sh` runs. If it was started in the background, run:
 
-- Everything is stored under `data/`, which git ignores: the SQLite database, the original uploads, exports and backups.
-- Turn on macOS FileVault so this folder is encrypted on disk.
-- Use **Settings → Back up now** to copy the database and uploads.
+```bash
+pkill -f "uvicorn app.main:app"; pkill -f "next dev --hostname 127.0.0.1"
+```
 
-## Optional: local AI suggestions (free)
+---
 
-1. Install [Ollama](https://ollama.com).
-2. Run `ollama pull qwen2.5:7b`.
-3. Enable local AI in Settings.
+## 3. Daily use
 
-Suggestions always need your confirmation.
+Work through these screens in order.
 
-## Limits (read before relying on it)
+### Imports
+Upload a Kotak statement: CSV, XLS, XLSX or PDF.
+
+- **PDF password:** if the PDF is locked, a password box appears. The password is used once to open the file and is never saved or logged.
+- **Reconciliation:** every row is checked. Previous balance + credit − debit must equal the printed balance. Each import shows one of these statuses:
+  - **Reconciled**: all rows check out.
+  - **Reconciled (reordered)**: same-day rows were out of order, and reordering fixed the check.
+  - **Not verifiable**: the file has no running balance.
+  - **Accepted with override**: the check failed, and you accepted the file with a written reason. The reason is kept in the CA pack.
+- **Re-check:** for any override or unverifiable import, the Re-check button re-reads the stored file with the current parser. Use it after the parser has been fixed.
+- **Duplicates:** the same file cannot be imported twice. Overlapping statements are fine, because rows already imported are skipped.
+- **Spend summary:** right after an upload, a panel shows where the money went and the risk score for that statement. Any past import can be reopened with **Spend summary**.
+
+### Spend
+Full spend analysis for the financial year:
+
+- **Spending risk score** (0–100) with a level: Low, Moderate, High or Critical.
+- **Risk signals**, each marked OK, Watch or Danger with the reason:
+  - spending compared with new money in
+  - cushion left (closing balance ÷ monthly spending)
+  - days the balance was near zero
+  - borrowing and EMIs
+  - money sent to brokers that was not returned
+  - spending trend against earlier months
+  - bounce and penalty charges
+  - cash withdrawals
+- **Spending by category**, **spending by month**, **who you paid most**, and **biggest single spends**.
+- **Moved, not spent:** own-account transfers, investments, trading deposits and tax payments. These are not counted as spending.
+- **Two-way money:** people who both paid you and received money from you. Money going back and forth is usually loans, splits or your own money, so it is not treated as spending.
+
+These figures are a reading of your bank data, not financial advice. Most spending is uncategorised until you confirm it in Review, so confirm categories to sharpen the picture.
+
+### Review
+Confirm what each credit and debit was.
+
+- Credits and debits are shown on separate tabs.
+- **Confirm** saves the category and any note for your CA.
+- **Always for …** turns the decision into a rule, so future transactions from the same payee are suggested automatically.
+- **Explain** on a flag and save it to resolve the flag.
+- **Suggest with local AI** asks the optional local model for suggestions. Suggestions always need your confirmation.
+- Keyboard: `j` and `k` move between cards, `Enter` confirms the focused card.
+
+Only **confirmed** credits count towards income in the tax estimate and the dashboard. Suggested items are shown separately.
+
+### Transactions
+A filterable table of every transaction. Bank columns are read-only. You can change the category inline.
+
+### Tax estimate
+Enter Form 16 figures, TDS, advance tax, broker P&L, freelance expenses and deductions. The estimate updates about one second after you stop typing.
+
+- Both regimes are shown side by side, with the recommended one marked.
+- Each line states its source.
+- Unconfirmed credits are excluded, and the estimate says how much they total.
+
+### CA pack
+Download the Excel workbook (one sheet per topic, including the original bank narration beside each classification) and the PDF summary.
+
+### Rules
+View, add, edit, disable and delete categorisation rules. Lower priority numbers run first. **Re-run on unconfirmed** re-applies the rules; it never changes anything you have confirmed.
+
+### Settings
+- Anomaly thresholds, such as the large-credit amount.
+- Local AI on or off, with its model and URL. The URL must point to this computer.
+- Categories: add your own, and choose each one's tax treatment.
+- **Back up now** copies the database and uploads to `data/backups/` or a folder you choose.
+
+---
+
+## 4. Where the data lives
+
+Everything is under `data/` in the project folder. Git ignores this folder.
+
+| Path | Contents |
+|---|---|
+| `data/fintrack.db` | SQLite database: transactions, classifications, rules, tax inputs, audit log |
+| `data/uploads/` | The original statement files, kept as evidence. Names begin with a SHA-256 prefix. |
+| `data/exports/` | Excel and PDF CA packs |
+| `data/backups/` | Backups from **Back up now** |
+
+To keep data elsewhere, set `FINTRACK_DATA_DIR` before starting:
+
+```bash
+FINTRACK_DATA_DIR="$HOME/Documents/FinTrackData" ./dev.sh
+```
+
+Security notes:
+
+- Turn on **FileVault** (System Settings → Privacy & Security). The data is not encrypted on disk without it. `dev.sh` warns you if it is off.
+- The backend listens only on `127.0.0.1`. Other computers on your network cannot reach it.
+- Every write request must carry the `X-FinTrack` header. This blocks cross-site requests from other websites.
+- Never commit `data/` or a real statement to git.
+
+---
+
+## 5. Optional: local AI suggestions (free)
+
+1. Install [Ollama](https://ollama.com) and open it once.
+2. In a terminal, run `ollama pull qwen2.5:7b`.
+3. In FinTrack, go to **Settings → Local AI**, tick **Enabled**, and save.
+4. On the Review page, click **Suggest with local AI**.
+
+Everything runs on your computer. Without Ollama, the rules still work, and you categorise by hand.
+
+---
+
+## 6. Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| "Backend not running" screen | The backend did not start. Check the terminal running `dev.sh` for errors. Run `./dev.sh` again. |
+| Port 8000 or 3000 already in use | An older copy is still running. Stop it (see section 2), then start again. |
+| `pnpm: command not found` | Install pnpm (`brew install pnpm`). |
+| Python version error | Install Python 3.12 (`brew install python@3.12`) and delete `backend/.venv`, then run `./dev.sh` again. |
+| "Could not find the transaction table header" | The file is not a recognised Kotak layout. Try the Excel or CSV download instead of the PDF. |
+| "The statement did not reconcile" | A row is missing or misread. Try another format. If you have checked the statement, you can accept it with a reason. Once the parser is fixed, use **Re-check**. |
+| "This PDF is password-protected" | Enter the statement password in the box that appears. |
+| "This exact file was already imported" | Nothing to do. The statement is already in the database. |
+| Local AI: "Could not reach Ollama" | Start Ollama, and check that the URL in Settings is `http://127.0.0.1:11434`. |
+| Dashboard shows gaps | A period in the financial year has no statement. Import it; the gap disappears. |
+
+To reset everything and start empty, stop the app and delete the `data/` folder. This cannot be undone. Make a backup first.
+
+---
+
+## 7. Limits (read before relying on it)
 
 - **The tax figure is an estimate.** Confirm it with your CA before filing.
-- **FY 2026-27 tax rules are unverified.** They are copied from FY 2025-26 (`backend/app/tax/rules/2026-27.yaml`, marked `verified: false`). Check them against Finance Act 2026 and the Income-tax Act 2025.
-- **Not modelled:**
+- **FY 2026-27 tax rules are unverified.** They are copied from FY 2025-26 (`backend/app/tax/rules/2026-27.yaml`, marked `verified: false`). Check them against Finance Act 2026 and the Income-tax Act 2025. The app shows a warning while they are unverified.
+- **Not modelled in the tax estimate:**
   - loss carry-forward
   - surcharge marginal relief
   - senior-citizen slabs
   - house-property income other than home-loan interest
-- **Phase 2 (not built yet):** AIS / 26AS reconciliation, broker P&L import, document vault, business/LLP profile, and banks other than Kotak.
-- **The Kotak parser was built without a real statement.** It finds columns by their names. If your file fails to import, try another format, such as Excel instead of PDF.
+- **The spending risk score is a heuristic.** It reads patterns in the data. It does not know your goals, your obligations outside this account, or cash you spend without this account.
+- **Only Kotak is supported.** The parser was tested on one real Kotak PDF statement and on synthetic CSV and Excel files. Other Kotak layouts may need adjustment.
+- **Phase 2, not built yet:** AIS and Form 26AS reconciliation, broker P&L import, document vault, business/LLP profile, and banks other than Kotak.
 
-## Development
+---
+
+## 8. Development
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q        # backend tests
+cd backend && .venv/bin/python -m pytest -q        # backend tests (31)
 cd frontend && pnpm exec tsc --noEmit && pnpm exec eslint src
+cd frontend && pnpm exec next build                # production build check
 ```
 
-The design is in `docs/superpowers/specs/2026-11-11-fintrack-design.md`.
+Project layout:
+
+```
+dev.sh                  start script
+backend/app/            FastAPI app
+  importers/            bank parsers (kotak.py) and balance reconciliation
+  tax/engine.py         tax computation
+  tax/rules/*.yaml      tax rules per financial year
+  classify.py           rules engine, counterparty extraction, local AI
+  spend.py              spend analytics and risk score
+  reports.py            Excel and PDF CA pack
+  seed.py               default categories and built-in rules
+backend/tests/          test suite
+frontend/src/app/       pages (dashboard, spend, review, transactions, imports, tax, reports, rules, settings)
+frontend/src/components shared UI and spend components
+docs/superpowers/specs/ design document
+```
+
+The design document is at `docs/superpowers/specs/2026-11-11-fintrack-design.md`. Some parts of it describe the original plan; this README is the accurate description of what is built.

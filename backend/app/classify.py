@@ -24,6 +24,8 @@ _CP_PATTERNS = [
     re.compile(r"(?i)^upim?/([^/]+)/"),                                     # UPI/<name>/<ref>/<note>
     re.compile(r"(?i)^(?:imps|neft|rtgs|ib|mb)[\s/\-:]+(?:(?:cr|dr|p2a|p2m|in|out)[\s/\-:]+)?([^/\-:]+)"),
     re.compile(r"(?i)^cash\s+deposit\s+by\s+([a-z .]+?)\s+at\b"),           # Cash Deposit by <name> at <place>
+    re.compile(r"(?i)^pg\s+(?:os)?([a-z][a-z .]+?)(?:\s+pri(?:vate)?.*)?$"),    # PG <merchant> (payment gateway)
+    re.compile(r"(?i)^([a-z][a-z .]{2,40}?)\s+\d{8,}$"),                       # <MERCHANT> <mandate/ref no>
 ]
 
 

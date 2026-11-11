@@ -395,7 +395,10 @@ def spend(fy: Optional[str] = None, start: Optional[date] = None, end: Optional[
             raise HTTPException(404, "Import not found")
         start, end = b.period_from, b.period_to
     elif fy:
-        start, end = fy_range(fy)
+        try:
+            start, end = fy_range(fy)
+        except (ValueError, IndexError):
+            raise HTTPException(400, "fy must look like 2026-27")
     if start is None or end is None or start > end:
         raise HTTPException(400, "Give fy, batch_id, or start and end dates")
     return spend_analyse(s, start, end)

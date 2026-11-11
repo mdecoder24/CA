@@ -43,3 +43,27 @@ def test_overspending_is_dangerous(client):
 def test_spend_bad_params(client):
     assert client.get("/api/spend").status_code == 400
     assert client.get("/api/spend", params={"batch_id": 999}).status_code == 404
+
+
+def test_person_key_groups_truncated_names():
+    from app.spend import person_key
+
+    assert person_key("Mr Hrishik") == person_key("Hrishikesh Redd") == person_key("Hrishikesh") == "hrishi"
+    assert person_key("Sagar Sand") != person_key("Sargar Sachin")
+    assert person_key("Al") == ""
+
+
+def test_two_way_flows(client):
+    csv = """Sl. No.,Transaction Date,Value Date,Description,Chq / Ref No.,Amount,Dr / Cr,Balance,Dr / Cr
+1,01-05-2025,01-05-2025,Recd:IMPS/1111111111/Mr Hrishik/KKBK/X1/IMPS,R1,"50,000.00",CR,"50,000.00",CR
+2,02-05-2025,02-05-2025,SentIMPS222222222222Hrishikesh/IDFB/IMPS,R2,"45,000.00",DR,"5,000.00",CR
+3,03-05-2025,03-05-2025,PG OSAMEXCC,R3,"1,000.00",DR,"4,000.00",CR
+"""
+    _up(client, "t.csv", csv)
+    d = client.get("/api/spend", params={"fy": "2025-26"}).json()
+    assert d["two_way"][0]["received"] == 50_000_00 and d["two_way"][0]["sent"] == 45_000_00
+    assert d["pass_through"] == 45_000_00
+    assert any(c["category"] == "Not yet categorised" for c in d["categories"])
+    txs = client.get("/api/transactions", params={"fy": "2025-26", "direction": "debit"}).json()
+    amex = next(t for t in txs if "AMEX" in t["raw_description"])
+    assert amex["category"] == "Credit card bill" and amex["counterparty"] == "Amexcc"

@@ -88,7 +88,10 @@ SEED_V2_RULES = [
     (r"program\s*fee|card\s*fee", "regex", "debit", "Bank charges", False, 72),
     (r"^pcd/", "regex", "debit", "Shopping", False, 85),
 ]
-SEED_VERSION = 2
+SEED_V3_RULES = [
+    (r"^pg\s*os\w*cc\b|cheq\s*digital|\bcred\s*club|amex|card\s*bill", "regex", "debit", "Credit card bill", False, 44),
+]
+SEED_VERSION = 3
 
 DEFAULT_SETTINGS = {
     "anomaly": {"large_credit_paise": 50_000_00, "round_repeat_min": 3, "round_unit_paise": 1_000_00},
@@ -133,6 +136,11 @@ def seed(s: Session) -> None:
         s.commit()
         cats = {(c.name, c.direction): c.id for c in s.exec(select(Category))}
         for pattern, mtype, direction, cat, auto, prio in SEED_V2_RULES:
+            s.add(Rule(profile_id=profile.id, priority=prio, match_type=mtype, pattern=pattern,
+                       direction=direction, category_id=cats[(cat, direction)], auto_confirm=auto, builtin=True))
+    if current < 3:
+        cats = {(c.name, c.direction): c.id for c in s.exec(select(Category))}
+        for pattern, mtype, direction, cat, auto, prio in SEED_V3_RULES:
             s.add(Rule(profile_id=profile.id, priority=prio, match_type=mtype, pattern=pattern,
                        direction=direction, category_id=cats[(cat, direction)], auto_confirm=auto, builtin=True))
     if ver is None:

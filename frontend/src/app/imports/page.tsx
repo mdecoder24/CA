@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { PageHeader, useApp } from "@/components/shell";
+import { type Spend, SpendSnapshot } from "@/components/spend-report";
 import { api, ApiError, fmtDate, type ImportBatch, paise } from "@/lib/api";
 import { useData } from "@/lib/use-data";
 
@@ -22,6 +23,7 @@ export default function ImportsPage() {
   const [failure, setFailure] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [snapshot, setSnapshot] = useState<Spend | null>(null);
 
   const reset = () => {
     setFile(null);
@@ -45,6 +47,10 @@ export default function ImportsPage() {
       toast(`Imported ${r.inserted} transactions${r.duplicates ? `, skipped ${r.duplicates} already imported` : ""}.`);
       reset();
       bump();
+      api
+        .get<Spend>("/api/spend", { batch_id: r.batch.id })
+        .then(setSnapshot)
+        .catch(() => setSnapshot(null));
     } catch (e) {
       const err = e as ApiError;
       if (err.code === "password_required") {
@@ -133,6 +139,8 @@ export default function ImportsPage() {
         )}
       </section>
 
+      {snapshot && <SpendSnapshot d={snapshot} onClose={() => setSnapshot(null)} />}
+
       <section className="card mt-4 overflow-x-auto">
         <table className="table">
           <thead>
@@ -195,7 +203,25 @@ export default function ImportsPage() {
                       </button>
                     )}
                   </td>
-                  <td className="num text-ink-2">{new Date(b.created_at).toLocaleDateString("en-IN")}</td>
+                  <td className="num text-ink-2">
+                    {new Date(b.created_at).toLocaleDateString("en-IN")}
+                    <div>
+                      <button
+                        className="btn btn-ghost btn-sm -ml-2.5 mt-1"
+                        onClick={() =>
+                          api
+                            .get<Spend>("/api/spend", { batch_id: b.id })
+                            .then((d) => {
+                              setSnapshot(d);
+                              window.scrollTo({ top: 0 });
+                            })
+                            .catch((e) => toast((e as Error).message, "error"))
+                        }
+                      >
+                        Spend summary
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               );
             })}

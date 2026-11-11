@@ -31,7 +31,7 @@ fi
 cleanup() { kill 0 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
 
-(cd backend && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level warning) &
+(cd backend && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level warning --reload --reload-dir app) &
 (cd frontend && pnpm exec next dev --hostname 127.0.0.1 --port 3000) &
 
 echo ""

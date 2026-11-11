@@ -25,6 +25,7 @@ export const useApp = () => {
 
 const NAV = [
   { href: "/", label: "Dashboard" },
+  { href: "/spend", label: "Spend" },
   { href: "/review", label: "Review" },
   { href: "/transactions", label: "Transactions" },
   { href: "/imports", label: "Imports" },
