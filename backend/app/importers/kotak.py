@@ -56,7 +56,7 @@ def parse_date(v) -> Optional[date]:
     s = _clean(v)
     if not s:
         return None
-    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"\s+", " ", s.replace("’", "'").replace("'", ""))
     for fmt in DATE_FORMATS:
         try:
             return datetime.strptime(s, fmt).date()
@@ -121,7 +121,7 @@ def _find_header(grid: list[list[str]]) -> tuple[int, dict[str, int]]:
     raise StatementError("Could not find the transaction table header (Date / Description / Amount columns).")
 
 
-_D = r"\d{1,2}[-/ .](?:[A-Za-z]{3,9}|\d{1,2})[-/ .,]*\d{2,4}"
+_D = r"\d{1,2}[-/ .](?:[A-Za-z]{3,9}|\d{1,2})[-/ .,'’]*\d{2,4}"
 PERIOD_RE = re.compile(rf"({_D})\s*(?:-|–|to|TO|To)\s*:?\s*({_D})")
 
 
@@ -138,7 +138,26 @@ OPENING_RE = re.compile(r"opening\s+balance[^\d\-]*(-?[\d,]+\.\d{2})\s*(cr|dr)?"
 CLOSING_RE = re.compile(r"closing\s+balance[^\d\-]*(-?[\d,]+\.\d{2})\s*(cr|dr)?", re.I)
 SUMMARY_RE = re.compile(
     r"opening\s+balance\s+closing\s+balance[^\n]*\n[^\n]*?(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})", re.I)
-ACCOUNT_RE = re.compile(r"(?:account\s*(?:no|number)|a/c\s*no)\.?\s*[:\-]?\s*([X\d*]{4,})", re.I)
+ACCOUNT_RE = re.compile(r"(?:account\s*(?:no|number)|a/c\s*(?:no|number))\.?\s*[:\-]?\s*([X\d*]{4,})", re.I)
+
+# Page furniture that must never be glued onto a narration.
+NOISE_RE = re.compile(r"^\d+\s*/\s*\d+$|need help|generated on|contact our|customer care|page \d+ of \d+|"
+                      r"small finance bank$|this is a computer generated", re.I)
+
+
+def summary_balances(text: str):
+    """Summary blocks like 'Opening balance … Closing balance' with the amounts on a later line
+    (Slice, many app-style statements). First amount = opening, last = closing."""
+    lines = text.splitlines()
+    for i, ln in enumerate(lines[:80]):
+        if re.search(r"opening\s+balance", ln, re.I) and re.search(r"closing\s+balance", ln, re.I):
+            for nxt in lines[i + 1:i + 4]:
+                amts = re.findall(r"-?₹?\s?-?[\d,]+\.\d{1,2}", nxt)
+                if len(amts) >= 2:
+                    o, _ = parse_amount(amts[0])
+                    c, _ = parse_amount(amts[-1])
+                    return o, c
+    return None, None
 
 
 def _balance_from_match(m) -> Optional[int]:
@@ -191,8 +210,9 @@ def _grid_to_statement(grid: list[list[str]], full_text: str) -> ParsedStatement
                 if rows:
                     break
                 continue
-            # Multi-line narration wrapped onto the next row
-            if desc and rows:
+            # Multi-line narration wrapped onto the next row (but not page headers/footers)
+            line_text = " ".join(_clean(c) for c in raw if _clean(c))
+            if desc and rows and not NOISE_RE.search(line_text) and not NOISE_RE.search(desc):
                 rows[-1].description = f"{rows[-1].description} {desc}".strip()
             continue
 
@@ -250,11 +270,16 @@ def _grid_to_statement(grid: list[list[str]], full_text: str) -> ParsedStatement
     # Kotak e-statements end with a summary table whose header row is
     # "Opening Balance  Closing Balance" and whose values sit on the next line.
     # Reading "first number after 'Closing Balance'" would pick the opening value.
+    s_open, s_close = summary_balances(full_text)
     summary = SUMMARY_RE.search(full_text)
     if summary:
         if opening is None:
             opening, _ = parse_amount(summary.group(1))
         closing, _ = parse_amount(summary.group(2))
+    elif s_close is not None:
+        if opening is None:
+            opening = s_open
+        closing = s_close
     else:
         if opening is None:
             opening = _balance_from_match(OPENING_RE.search(full_text))

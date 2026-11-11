@@ -188,3 +188,22 @@ def test_same_amount_same_day_different_refs_not_duplicate(client):
     assert _upload(client, "d.csv", csv.encode()).status_code == 200
     txs = client.get("/api/transactions", params={"fy": "2025-26"}).json()
     assert not any(f["type"] == "possible_duplicate" for t in txs for f in t["flags"])
+
+
+def test_slice_shapes():
+    from datetime import date
+
+    from app.classify import extract_counterparty as cp
+    from app.importers.kotak import find_period, parse_amount, parse_date, summary_balances
+
+    assert parse_date("01 Apr '26") == date(2026, 4, 1)
+    assert parse_amount("-₹23,749") == (-2374900, None)
+    assert parse_amount("₹9,293.9") == (929390, None)
+    assert find_period("01 Apr '26 - 11 Nov '26\n1/27") == (date(2026, 4, 1), date(2026, 11, 11))
+    text = ("Opening balance Total credits Interest earned Total debits Closing balance\n+ + - =\n"
+            "₹3,317.18 ₹11,31,983.78 ₹548.06 ₹11,35,845.33 ₹3.69\n")
+    assert summary_balances(text) == (331718, 369)
+    assert cp("UPI Credit-Avuthu Saritha-9490590309@slc-NESF0000333-609218200403-Payment from slice") == "Avuthu Saritha"
+    assert cp("UPI-Credit-631113177834-MR MUSKU ABHINAY RED-NESF0000333-XXXXXX7418@slc-Payment") == "Mr Musku Abhinay Red"
+    assert cp("UPI Debit-AVUTHU KUSHWANT KUMA-94902481 60@slc-609293538628-self transfer") == "Avuthu Kushwant Kuma"
+    assert cp("UPI-RAHUL SHARMA-rahul@okhdfc-HDFC0001-412345678901-dinner") == "Rahul Sharma"

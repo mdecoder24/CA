@@ -28,6 +28,11 @@ BANKS: dict[str, str] = {
     "union": "Union Bank of India",
     "boi": "Bank of India",
     "indian": "Indian Bank",
+    "slice": "slice small finance bank",
+    "jupiter": "Jupiter (Federal Bank)",
+    "fi": "Fi (Federal Bank)",
+    "airtel": "Airtel Payments Bank",
+    "paytm": "Paytm Payments Bank",
     "other": "Other bank",
 }
 

@@ -23,6 +23,7 @@ _CP_PATTERNS = [
     re.compile(r"(?i)^(?:neft|rtgs)\s+[a-z]{4}[a-z0-9]*\d{6,}\s+(.+)$"),    # NEFT <UTR> <NAME ...>
     re.compile(r"(?i)upi/(?:dr|cr)/\d+/([^/]+)/"),                          # SBI: TO TRANSFER-UPI/DR/<ref>/<name>/
     re.compile(r"(?i)^upi/\d{6,}/[^/]*/([^/]+)/"),                          # ICICI: UPI/<ref>/<note>/<name>/
+    re.compile(r"(?i)^upi[\s-]*(?:debit|credit)-(?:\d{6,}-)?([^-]+)-"),     # Slice: UPI Credit-<name>-<vpa>…
     re.compile(r"(?i)^upi-([^-]+)-"),                                       # HDFC: UPI-<name>-<vpa>-<ifsc>-<ref>
     re.compile(r"(?i)^upim?/([^/]+)/"),                                     # Kotak: UPI/<name>/<ref>/<note>
     re.compile(r"(?i)^(?:imps|neft|rtgs|ib|mb)[\s/\-:]+(?:(?:cr|dr|p2a|p2m|in|out)[\s/\-:]+)?([^/\-:]+)"),

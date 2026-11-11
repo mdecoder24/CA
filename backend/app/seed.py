@@ -94,7 +94,13 @@ SEED_V3_RULES = [
 SEED_V4_CATEGORIES = [
     ("Loan given / money lent", "debit", "not_income"),
 ]
-SEED_VERSION = 4
+# Daily-interest and in-app "pocket" transfers used by app banks such as slice.
+SEED_V5_RULES = [
+    (r"interest\s*cr\b|interest\s*credit", "regex", "credit", "Interest – savings", True, 10),
+    (r"round\s*ups?|monies\s*transfer", "regex", "credit", "Transfer – own account", False, 16),
+    (r"round\s*ups?|monies\s*transfer", "regex", "debit", "Transfer – own account", False, 16),
+]
+SEED_VERSION = 5
 
 DEFAULT_SETTINGS = {
     "anomaly": {"large_credit_paise": 50_000_00, "round_repeat_min": 3, "round_unit_paise": 1_000_00},
@@ -151,6 +157,11 @@ def seed(s: Session) -> None:
         for name, direction, treatment in SEED_V4_CATEGORIES:
             if (name, direction) not in existing:
                 s.add(Category(profile_id=profile.id, name=name, direction=direction, treatment=treatment, sort=510))
+    if current < 5:
+        cats = {(c.name, c.direction): c.id for c in s.exec(select(Category))}
+        for pattern, mtype, direction, cat, auto, prio in SEED_V5_RULES:
+            s.add(Rule(profile_id=profile.id, priority=prio, match_type=mtype, pattern=pattern,
+                       direction=direction, category_id=cats[(cat, direction)], auto_confirm=auto, builtin=True))
     if ver is None:
         s.add(Setting(key="seed_version", value={"v": SEED_VERSION}))
     else:
